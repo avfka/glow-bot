@@ -220,6 +220,15 @@ def scan_method_keyboard() -> InlineKeyboardMarkup:
 
 # ── Settings ──────────────────────────────────────────────────────────────────
 
+# ── Settings ──────────────────────────────────────────────────────────────────
+
+def settings_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("⏰ Изменить время напоминаний", callback_data="settings:reminders")],
+        [InlineKeyboardButton("👤 Обновить профиль кожи", callback_data="settings:profile")],
+    ])
+
+
 def timezone_keyboard() -> InlineKeyboardMarkup:
     timezones = [
         ("🇷🇺 Москва (UTC+3)", "Europe/Moscow"),
