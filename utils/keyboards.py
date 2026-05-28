@@ -1,14 +1,12 @@
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
 
-# ── Reply keyboard (main menu) ────────────────────────────────────────────────
+# ── Reply keyboard (main menu — 4 кнопки) ────────────────────────────────────
 
 def main_menu_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         [
-            [KeyboardButton("🌅 Утренняя рутина"), KeyboardButton("🌙 Вечерняя рутина")],
-            [KeyboardButton("✅ Отметить выполнение"), KeyboardButton("🔥 Мой стрик")],
-            [KeyboardButton("🧴 Мои продукты"), KeyboardButton("🔍 Сканер состава")],
-            [KeyboardButton("👯 Друзья"), KeyboardButton("⚙️ Настройки")],
+            [KeyboardButton("👤 Профиль"), KeyboardButton("🔍 Подбор продуктов")],
+            [KeyboardButton("💆 Моя рутина"), KeyboardButton("🏆 Лидерборд")],
         ],
         resize_keyboard=True,
     )
@@ -57,17 +55,15 @@ def skin_problems_keyboard(selected: list[str]) -> InlineKeyboardMarkup:
     for label, code in SKIN_PROBLEMS:
         check = "✅ " if code in selected else ""
         rows.append([InlineKeyboardButton(f"{check}{label}", callback_data=f"problem:{code}")])
-    rows.append([
-        InlineKeyboardButton("➡️ Готово", callback_data="problems:done"),
-    ])
+    rows.append([InlineKeyboardButton("➡️ Готово", callback_data="problems:done")])
     return InlineKeyboardMarkup(rows)
 
 
 def budget_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("💰 Бюджетный", callback_data="budget:low")],
-        [InlineKeyboardButton("💳 Средний", callback_data="budget:medium")],
-        [InlineKeyboardButton("💎 Премиум", callback_data="budget:high")],
+        [InlineKeyboardButton("💰 Бюджетный (до 500 ₽)", callback_data="budget:low")],
+        [InlineKeyboardButton("💳 Средний (500–2000 ₽)", callback_data="budget:medium")],
+        [InlineKeyboardButton("💎 Премиум (от 2000 ₽)", callback_data="budget:high")],
     ])
 
 
@@ -88,7 +84,28 @@ def confirm_analysis_keyboard() -> InlineKeyboardMarkup:
     ])
 
 
-# ── Tracking ──────────────────────────────────────────────────────────────────
+# ── Routine ───────────────────────────────────────────────────────────────────
+
+def routine_period_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("🌅 Утро", callback_data="routine:morning"),
+            InlineKeyboardButton("🌙 Вечер", callback_data="routine:evening"),
+        ],
+        [InlineKeyboardButton("✅ Отметить выполнение", callback_data="routine:track")],
+    ])
+
+
+def routine_steps_keyboard(steps: list, period: str, step_products: dict) -> InlineKeyboardMarkup:
+    """Кнопки для каждого шага рутины — привязать продукт."""
+    rows = []
+    for i, step in enumerate(steps):
+        product = step_products.get(f"{period}_{i}", "")
+        label = f"{'✅' if product else '➕'} Шаг {i+1}: {step.get('name', '')}"
+        rows.append([InlineKeyboardButton(label, callback_data=f"assign_product:{period}:{i}")])
+    rows.append([InlineKeyboardButton("✅ Отметить выполнение", callback_data="routine:track")])
+    return InlineKeyboardMarkup(rows)
+
 
 def tracking_keyboard(morning_done: bool, evening_done: bool) -> InlineKeyboardMarkup:
     morning_icon = "✅" if morning_done else "☐"
@@ -111,7 +128,112 @@ def reminder_done_keyboard(period: str) -> InlineKeyboardMarkup:
     ])
 
 
-# ── Products ──────────────────────────────────────────────────────────────────
+# ── Profile ───────────────────────────────────────────────────────────────────
+
+def profile_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("✏️ Обновить профиль кожи", callback_data="profile:update")],
+        [InlineKeyboardButton("⏰ Настроить напоминания", callback_data="settings:reminders")],
+    ])
+
+
+# ── Product search ────────────────────────────────────────────────────────────
+
+PRODUCT_CATEGORIES = [
+    ("🧼 Очищение", "cleanser"),
+    ("💦 Тонер", "toner"),
+    ("💉 Сыворотка", "serum"),
+    ("🥛 Крем", "moisturizer"),
+    ("☀️ SPF", "spf"),
+    ("👁 Уход за глазами", "eye_care"),
+    ("🌿 Маска", "mask"),
+    ("📦 Другое", "other"),
+]
+
+CATEGORY_LABELS = {c: l for l, c in PRODUCT_CATEGORIES}
+
+
+def product_category_keyboard() -> InlineKeyboardMarkup:
+    rows = []
+    cats = list(PRODUCT_CATEGORIES)
+    for i in range(0, len(cats), 2):
+        row = [InlineKeyboardButton(cats[i][0], callback_data=f"search_cat:{cats[i][1]}")]
+        if i + 1 < len(cats):
+            row.append(InlineKeyboardButton(cats[i+1][0], callback_data=f"search_cat:{cats[i+1][1]}"))
+        rows.append(row)
+    return InlineKeyboardMarkup(rows)
+
+
+def product_recommendation_keyboard(idx: int, wb_query: str = "", za_query: str = "") -> InlineKeyboardMarkup:
+    rows = [
+        [InlineKeyboardButton("➕ Добавить в рутину", callback_data=f"add_rec:{idx}")],
+    ]
+    if wb_query:
+        rows.append([InlineKeyboardButton("🛒 Найти на WB", url=f"https://www.wildberries.ru/catalog/0/search.aspx?search={wb_query}")])
+    if za_query:
+        rows.append([InlineKeyboardButton("🛒 Найти на ЗЯ", url=f"https://goldapple.ru/search?query={za_query}")])
+    return InlineKeyboardMarkup(rows)
+
+
+def search_results_keyboard(recommendations: list) -> InlineKeyboardMarkup:
+    rows = []
+    for i, rec in enumerate(recommendations):
+        name = rec.get("name", f"Продукт {i+1}")[:40]
+        rows.append([InlineKeyboardButton(f"{'✅' if rec.get('selected') else '○'} {name}", callback_data=f"pick_rec:{i}")])
+    rows.append([InlineKeyboardButton("🔄 Другая категория", callback_data="search:back")])
+    return InlineKeyboardMarkup(rows)
+
+
+# ── Leaderboard ───────────────────────────────────────────────────────────────
+
+def leaderboard_keyboard(referral_link: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("📤 Пригласить подругу", switch_inline_query=referral_link)],
+        [InlineKeyboardButton("🏅 Мои достижения", callback_data="league:achievements")],
+    ])
+
+
+def achievements_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("◀️ Назад", callback_data="league:back")],
+    ])
+
+
+# ── Scanner ───────────────────────────────────────────────────────────────────
+
+def scanner_result_keyboard(wb_url: str = None, za_url: str = None) -> InlineKeyboardMarkup:
+    rows = []
+    if wb_url:
+        rows.append([InlineKeyboardButton("🛒 Найти на WB", url=wb_url)])
+    if za_url:
+        rows.append([InlineKeyboardButton("🛒 Найти на ЗЯ", url=za_url)])
+    rows.append([InlineKeyboardButton("🔍 Сканировать ещё", callback_data="scanner:new")])
+    return InlineKeyboardMarkup(rows)
+
+
+def scan_method_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("📝 Ввести название", callback_data="scan:by_name")],
+        [InlineKeyboardButton("📷 Сфотографировать состав", callback_data="scan:by_photo")],
+    ])
+
+
+# ── Settings ──────────────────────────────────────────────────────────────────
+
+def timezone_keyboard() -> InlineKeyboardMarkup:
+    timezones = [
+        ("🇷🇺 Москва (UTC+3)", "Europe/Moscow"),
+        ("🇷🇺 Екатеринбург (UTC+5)", "Asia/Yekaterinburg"),
+        ("🇷🇺 Новосибирск (UTC+7)", "Asia/Novosibirsk"),
+        ("🇷🇺 Владивосток (UTC+10)", "Asia/Vladivostok"),
+        ("🇧🇾 Минск (UTC+3)", "Europe/Minsk"),
+        ("🇰🇿 Алматы (UTC+6)", "Asia/Almaty"),
+    ]
+    rows = [[InlineKeyboardButton(label, callback_data=f"tz:{tz}")] for label, tz in timezones]
+    return InlineKeyboardMarkup(rows)
+
+
+# ── Product type (add product) ────────────────────────────────────────────────
 
 def product_type_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
@@ -151,52 +273,3 @@ def products_list_keyboard(products: list) -> InlineKeyboardMarkup:
         ])
     rows.append([InlineKeyboardButton("➕ Добавить продукт", callback_data="add_product")])
     return InlineKeyboardMarkup(rows)
-
-
-# ── Scanner ───────────────────────────────────────────────────────────────────
-
-def scanner_result_keyboard(wb_url: str = None, za_url: str = None) -> InlineKeyboardMarkup:
-    rows = []
-    if wb_url:
-        rows.append([InlineKeyboardButton("🛒 Найти на WB", url=wb_url)])
-    if za_url:
-        rows.append([InlineKeyboardButton("🛒 Найти на ЗЯ", url=za_url)])
-    rows.append([InlineKeyboardButton("🔍 Сканировать ещё", callback_data="scanner:new")])
-    return InlineKeyboardMarkup(rows)
-
-
-def scan_method_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("📝 Ввести название", callback_data="scan:by_name")],
-        [InlineKeyboardButton("📷 Сфотографировать состав", callback_data="scan:by_photo")],
-    ])
-
-
-# ── Settings ──────────────────────────────────────────────────────────────────
-
-def settings_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("⏰ Изменить время напоминаний", callback_data="settings:reminders")],
-        [InlineKeyboardButton("👤 Обновить профиль кожи", callback_data="settings:profile")],
-    ])
-
-
-def timezone_keyboard() -> InlineKeyboardMarkup:
-    timezones = [
-        ("🇷🇺 Москва (UTC+3)", "Europe/Moscow"),
-        ("🇷🇺 Екатеринбург (UTC+5)", "Asia/Yekaterinburg"),
-        ("🇷🇺 Новосибирск (UTC+7)", "Asia/Novosibirsk"),
-        ("🇷🇺 Владивосток (UTC+10)", "Asia/Vladivostok"),
-        ("🇧🇾 Минск (UTC+3)", "Europe/Minsk"),
-        ("🇰🇿 Алматы (UTC+6)", "Asia/Almaty"),
-    ]
-    rows = [[InlineKeyboardButton(label, callback_data=f"tz:{tz}")] for label, tz in timezones]
-    return InlineKeyboardMarkup(rows)
-
-
-# ── Friends ───────────────────────────────────────────────────────────────────
-
-def friends_keyboard(referral_link: str) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("📤 Поделиться ссылкой", switch_inline_query=referral_link)],
-    ])

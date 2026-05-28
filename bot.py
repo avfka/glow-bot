@@ -3,20 +3,17 @@ import logging
 import sys
 
 from telegram import Update
-from telegram.ext import (
-    Application,
-    CommandHandler,
-    MessageHandler,
-    filters,
-)
+from telegram.ext import Application, CommandHandler, MessageHandler, filters
 
 from config import settings
 from database import init_db
 from handlers.onboarding import get_onboarding_handler
-from handlers.tracking import get_tracking_handlers
+from handlers.routine import get_routine_handlers
+from handlers.profile import get_profile_handlers
+from handlers.product_search import get_product_search_handler
+from handlers.leaderboard import get_leaderboard_handlers
 from handlers.products import get_products_handlers
 from handlers.scanner import get_scanner_handler
-from handlers.friends import get_friends_handlers
 from handlers.settings import get_settings_handlers
 from scheduler import create_scheduler
 
@@ -27,67 +24,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-DISCLAIMER = (
-    "⚠️ Анализ носит рекомендательный характер и не является "
-    "медицинским заключением. При серьёзных проблемах кожи "
-    "обратитесь к дерматологу."
-)
-
-
-async def cmd_routine(update: Update, context) -> None:
-    from database import async_session_factory
-    from database.queries import get_latest_routine
-
-    user_id = update.effective_user.id
-    async with async_session_factory() as session:
-        routine = await get_latest_routine(session, user_id)
-
-    if not routine:
-        await update.message.reply_text(
-            "У тебя пока нет рутины.\n"
-            "Пройди анализ кожи → /start"
-        )
-        return
-
-    def fmt(steps):
-        if not steps:
-            return "• Нет шагов"
-        lines = []
-        for step in steps:
-            lines.append(f"{step.get('step', '•')}. *{step.get('name', '')}*")
-            if step.get("description"):
-                lines.append(f"   _{step['description']}_")
-        return "\n".join(lines)
-
-    period = context.args[0] if context.args else None
-    if period == "morning":
-        text = f"🌅 *Утренняя рутина:*\n\n{fmt(routine.morning_steps)}"
-    elif period == "evening":
-        text = f"🌙 *Вечерняя рутина:*\n\n{fmt(routine.evening_steps)}"
-    else:
-        text = (
-            f"🌅 *Утренняя рутина:*\n{fmt(routine.morning_steps)}\n\n"
-            f"🌙 *Вечерняя рутина:*\n{fmt(routine.evening_steps)}"
-        )
-
-    text += f"\n\n_{DISCLAIMER}_"
-    await update.message.reply_text(text, parse_mode="Markdown")
-
-
-async def morning_routine(update: Update, context) -> None:
-    context.args = ["morning"]
-    await cmd_routine(update, context)
-
-
-async def evening_routine(update: Update, context) -> None:
-    context.args = ["evening"]
-    await cmd_routine(update, context)
-
 
 async def post_init(application: Application) -> None:
     await init_db()
     logger.info("Database initialised")
-
     scheduler = create_scheduler(application.bot)
     scheduler.start()
     application.bot_data["scheduler"] = scheduler
@@ -110,34 +50,35 @@ def main() -> None:
         .build()
     )
 
-    # Onboarding (must be first — handles /start)
+    # Onboarding — первым (handles /start)
     app.add_handler(get_onboarding_handler())
 
-    # Routine commands
-    app.add_handler(CommandHandler("routine", cmd_routine))
-    app.add_handler(MessageHandler(filters.Regex("^🌅 Утренняя рутина$"), morning_routine))
-    app.add_handler(MessageHandler(filters.Regex("^🌙 Вечерняя рутина$"), evening_routine))
+    # Profile
+    for h in get_profile_handlers():
+        app.add_handler(h)
 
-    # Tracking
-    for handler in get_tracking_handlers():
-        app.add_handler(handler)
+    # Routine (step-by-step + tracking)
+    for h in get_routine_handlers():
+        app.add_handler(h)
 
-    # Products
-    for handler in get_products_handlers():
-        app.add_handler(handler)
+    # Product search (AI recommendations)
+    app.add_handler(get_product_search_handler())
 
-    # Scanner (conversation — before simple handlers)
+    # Leaderboard (Duolingo-style)
+    for h in get_leaderboard_handlers():
+        app.add_handler(h)
+
+    # Products management
+    for h in get_products_handlers():
+        app.add_handler(h)
+
+    # Scanner
     app.add_handler(get_scanner_handler())
 
-    # Friends
-    for handler in get_friends_handlers():
-        app.add_handler(handler)
-
     # Settings
-    for handler in get_settings_handlers():
-        app.add_handler(handler)
+    for h in get_settings_handlers():
+        app.add_handler(h)
 
-    # Start bot
     if settings.webhook_url:
         logger.info(f"Starting webhook on port {settings.port}")
         app.run_webhook(

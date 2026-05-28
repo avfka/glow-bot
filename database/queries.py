@@ -440,3 +440,177 @@ async def get_user_scans(session: AsyncSession, user_id: int) -> list[ProductSca
         .limit(10)
     )
     return result.scalars().all()
+
+
+# ── Routine products (step → product mapping) ─────────────────────────────────
+
+async def get_routine_products(session: AsyncSession, user_id: int) -> dict:
+    """Returns {'{period}_{step_index}': product_name} dict."""
+    from database.models import RoutineProduct
+    result = await session.execute(
+        select(RoutineProduct).where(RoutineProduct.user_id == user_id)
+    )
+    items = result.scalars().all()
+    return {f"{r.period}_{r.step_index}": r.product_name for r in items}
+
+
+async def set_routine_product(
+    session: AsyncSession,
+    user_id: int,
+    period: str,
+    step_index: int,
+    product_name: str,
+) -> None:
+    from database.models import RoutineProduct
+    result = await session.execute(
+        select(RoutineProduct).where(
+            RoutineProduct.user_id == user_id,
+            RoutineProduct.period == period,
+            RoutineProduct.step_index == step_index,
+        )
+    )
+    existing = result.scalar_one_or_none()
+    if existing:
+        existing.product_name = product_name
+        from datetime import datetime
+        existing.updated_at = datetime.utcnow()
+    else:
+        session.add(RoutineProduct(
+            user_id=user_id,
+            period=period,
+            step_index=step_index,
+            product_name=product_name,
+        ))
+    await session.commit()
+
+
+# ── Achievements ──────────────────────────────────────────────────────────────
+
+ACHIEVEMENT_META = {
+    "first_analysis":   ("🔍", "Первый анализ",       "Прошла первый анализ кожи"),
+    "streak_3":         ("🔥", "3 дня подряд",         "Выполняла рутину 3 дня подряд"),
+    "streak_7":         ("⚡", "Неделя без пропусков", "7 дней стрика"),
+    "streak_30":        ("🏆", "Месяц!",               "30 дней стрика"),
+    "products_3":       ("🧴", "Коллекционер",         "Добавила 3 продукта"),
+    "scan_3":           ("🔬", "Эксперт состава",      "Сканировала 3 продукта"),
+    "routine_updated":  ("✨", "Обновление рутины",    "Обновила рутину с AI"),
+}
+
+
+async def get_user_achievements(session: AsyncSession, user_id: int) -> list[str]:
+    from database.models import Achievement
+    result = await session.execute(
+        select(Achievement.code).where(Achievement.user_id == user_id)
+    )
+    return [row[0] for row in result.all()]
+
+
+async def grant_achievement(session: AsyncSession, user_id: int, code: str) -> bool:
+    """Returns True if newly granted, False if already had it."""
+    from database.models import Achievement
+    existing = await session.execute(
+        select(Achievement).where(
+            Achievement.user_id == user_id,
+            Achievement.code == code,
+        )
+    )
+    if existing.scalar_one_or_none():
+        return False
+    session.add(Achievement(user_id=user_id, code=code))
+    await session.commit()
+    return True
+
+
+async def check_and_grant_streak_achievements(
+    session: AsyncSession, user_id: int, streak: int
+) -> list[str]:
+    """Check streak milestones and grant achievements. Returns list of new codes."""
+    new_achievements = []
+    milestones = [("streak_3", 3), ("streak_7", 7), ("streak_30", 30)]
+    for code, required in milestones:
+        if streak >= required:
+            if await grant_achievement(session, user_id, code):
+                new_achievements.append(code)
+    return new_achievements
+
+
+# ── User leagues ──────────────────────────────────────────────────────────────
+
+LEAGUE_CONFIG = [
+    ("diamond",  "💎 Бриллиант", 90),
+    ("platinum", "🏆 Платина",   30),
+    ("gold",     "🥇 Золото",    14),
+    ("silver",   "🥈 Серебро",   7),
+    ("bronze",   "🥉 Бронза",    0),
+]
+
+
+def streak_to_league(streak: int) -> tuple[str, str]:
+    for code, label, min_days in LEAGUE_CONFIG:
+        if streak >= min_days:
+            return code, label
+    return "bronze", "🥉 Бронза"
+
+
+def next_league(current_code: str) -> tuple[str, str, int] | None:
+    codes = [c for c, _, _ in LEAGUE_CONFIG]
+    idx = codes.index(current_code) if current_code in codes else len(codes) - 1
+    if idx == 0:
+        return None
+    next_code, next_label, next_min = LEAGUE_CONFIG[idx - 1]
+    return next_code, next_label, next_min
+
+
+async def upsert_user_league(session: AsyncSession, user_id: int, streak: int) -> None:
+    from database.models import UserLeague
+    from datetime import date
+    league_code, _ = streak_to_league(streak)
+    today = date.today()
+    result = await session.execute(
+        select(UserLeague).where(UserLeague.user_id == user_id)
+    )
+    league = result.scalar_one_or_none()
+    if league:
+        # Reset weekly counter on new week
+        if league.week_start is None or (today - league.week_start).days >= 7:
+            league.weekly_days = 1
+            league.week_start = today
+        else:
+            league.weekly_days = (league.weekly_days or 0) + 1
+        league.league = league_code
+    else:
+        league = UserLeague(
+            user_id=user_id,
+            league=league_code,
+            weekly_days=1,
+            week_start=today,
+        )
+        session.add(league)
+    await session.commit()
+
+
+async def get_leaderboard(session: AsyncSession, user_ids: list[int]) -> list[dict]:
+    from database.models import UserLeague
+    from datetime import date, timedelta
+    rows = []
+    for uid in user_ids:
+        tracking = await get_today_tracking(session, uid)
+        if not tracking:
+            yesterday = date.today() - timedelta(days=1)
+            tracking = await get_tracking_by_date(session, uid, yesterday)
+        streak = tracking.streak_days if tracking else 0
+        user = await get_user(session, uid)
+        league_result = await session.execute(
+            select(UserLeague).where(UserLeague.user_id == uid)
+        )
+        league_obj = league_result.scalar_one_or_none()
+        _, league_label = streak_to_league(streak)
+        rows.append({
+            "user_id": uid,
+            "name": user.name if user else "—",
+            "streak": streak,
+            "weekly_days": league_obj.weekly_days if league_obj else 0,
+            "league": league_label,
+        })
+    rows.sort(key=lambda x: x["weekly_days"], reverse=True)
+    return rows

@@ -217,3 +217,34 @@ class BloggerTip(Base):
     source = Column(String(255))
     url = Column(Text)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class RoutineProduct(Base):
+    """Привязка продукта к конкретному шагу рутины пользователя."""
+    __tablename__ = "routine_products"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(BigInteger, ForeignKey("users.user_id"), nullable=False)
+    period = Column(String(10), nullable=False)  # morning/evening
+    step_index = Column(Integer, nullable=False)
+    product_name = Column(String(500))
+    updated_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class Achievement(Base):
+    __tablename__ = "achievements"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(BigInteger, ForeignKey("users.user_id"), nullable=False)
+    code = Column(String(100), nullable=False)
+    achieved_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class UserLeague(Base):
+    __tablename__ = "user_leagues"
+
+    user_id = Column(BigInteger, ForeignKey("users.user_id"), primary_key=True)
+    league = Column(String(50), default="bronze")  # bronze/silver/gold/platinum/diamond
+    weekly_days = Column(Integer, default=0)
+    week_start = Column(Date)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now())
