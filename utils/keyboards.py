@@ -11,7 +11,6 @@ def main_menu_keyboard() -> ReplyKeyboardMarkup:
             [KeyboardButton("👯 Друзья"), KeyboardButton("⚙️ Настройки")],
         ],
         resize_keyboard=True,
-        persistent=True,
     )
 
 
