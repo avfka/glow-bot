@@ -188,7 +188,7 @@ def timezone_keyboard() -> InlineKeyboardMarkup:
         ("🇷🇺 Екатеринбург (UTC+5)", "Asia/Yekaterinburg"),
         ("🇷🇺 Новосибирск (UTC+7)", "Asia/Novosibirsk"),
         ("🇷🇺 Владивосток (UTC+10)", "Asia/Vladivostok"),
-        ("🇺🇦 Киев (UTC+2)", "Europe/Kiev"),
+        ("🇧🇾 Минск (UTC+3)", "Europe/Minsk"),
         ("🇰🇿 Алматы (UTC+6)", "Asia/Almaty"),
     ]
     rows = [[InlineKeyboardButton(label, callback_data=f"tz:{tz}")] for label, tz in timezones]

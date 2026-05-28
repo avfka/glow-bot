@@ -52,6 +52,22 @@ logger = logging.getLogger(__name__)
     WAIT_CORRECTION,
 ) = range(13)
 
+PROBLEMS_RU = {
+    "acne": "Акне",
+    "rosacea": "Розацеа",
+    "couperose": "Купероз",
+    "pigmentation": "Пигментация",
+    "wrinkles": "Морщины",
+    "redness": "Покраснения",
+    "enlarged_pores": "Расширенные поры",
+    "dryness": "Сухость",
+    "oiliness": "Жирный блеск",
+    "eczema": "Экзема",
+    "psoriasis": "Псориаз",
+    "sensitivity": "Чувствительность",
+    "puffiness": "Отёчность",
+}
+
 DISCLAIMER = (
     "⚠️ Анализ носит рекомендательный характер и не является "
     "медицинским заключением. При серьёзных проблемах кожи "
@@ -330,7 +346,7 @@ async def _run_analysis(query, context: ContextTypes.DEFAULT_TYPE) -> int:
             )
             context.user_data["onboarding"]["analysis_id"] = analysis.id
 
-        problems_text = "\n".join(f"• {p}" for p in result.problems) if result.problems else "• не обнаружено"
+        problems_text = "\n".join(f"• {PROBLEMS_RU.get(p, p)}" for p in result.problems) if result.problems else "• не обнаружено"
         skin_type_labels = {
             "oily": "жирная", "dry": "сухая",
             "combination": "комбинированная", "sensitive": "чувствительная"
