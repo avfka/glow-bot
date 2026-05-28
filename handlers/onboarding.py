@@ -352,10 +352,55 @@ async def _run_analysis(query, context: ContextTypes.DEFAULT_TYPE) -> int:
             "combination": "комбинированная", "sensitive": "чувствительная"
         }
 
+        # Skin score block
+        skin_score = result.raw_response.get("skin_score") if result.raw_response else None
+        score_text = ""
+        if skin_score:
+            overall = skin_score.get("overall")
+            hydration = skin_score.get("hydration")
+            evenness = skin_score.get("evenness")
+            pores = skin_score.get("pores")
+            if overall is not None:
+                score_text = (
+                    f"\n*Оценка состояния кожи:*\n"
+                    f"• Общая: {overall}/100\n"
+                )
+                if hydration is not None:
+                    score_text += f"• Увлажнённость: {hydration}/100\n"
+                if evenness is not None:
+                    score_text += f"• Ровность тона: {evenness}/100\n"
+                if pores is not None:
+                    score_text += f"• Поры: {pores}/100\n"
+
+        # Recommended ingredients block
+        rec = result.recommended_ingredients[:5] if result.recommended_ingredients else []
+        avoid = result.avoid_ingredients[:3] if result.avoid_ingredients else []
+        ingredients_text = ""
+        if rec:
+            ingredients_text += "\n✅ *Рекомендую ингредиенты:*\n" + "\n".join(f"• {i}" for i in rec)
+        if avoid:
+            ingredients_text += "\n\n❌ *Лучше избегать:*\n" + "\n".join(f"• {i}" for i in avoid)
+
+        # Difference vs user answers
+        user_problems = set(data.get("problems", []))
+        ai_problems = set(result.problems)
+        added = ai_problems - user_problems
+        removed = user_problems - ai_problems
+        diff_text = ""
+        if added:
+            added_ru = ", ".join(PROBLEMS_RU.get(p, p) for p in added)
+            diff_text += f"\n💡 *AI дополнительно выявил:* {added_ru}"
+        if removed:
+            removed_ru = ", ".join(PROBLEMS_RU.get(p, p) for p in removed)
+            diff_text += f"\n💡 *AI не подтвердил:* {removed_ru}"
+
         await query.edit_message_text(
             f"🔍 *Результат анализа*\n\n"
             f"*Тип кожи:* {skin_type_labels.get(result.skin_type, result.skin_type)}\n\n"
-            f"*Обнаруженные проблемы:*\n{problems_text}\n\n"
+            f"*Обнаруженные проблемы:*\n{problems_text}\n"
+            f"{diff_text}"
+            f"{score_text}"
+            f"{ingredients_text}\n\n"
             f"*Уверенность анализа:* {int(result.confidence_score * 100)}%\n\n"
             "Всё верно? Или хочешь добавить / исправить?",
             parse_mode="Markdown",
@@ -490,16 +535,16 @@ async def _save_and_generate_routine(
         morning_text = _format_routine_steps(routine_result.morning_routine)
         evening_text = _format_routine_steps(routine_result.evening_routine)
 
+        # edit_message_text не поддерживает ReplyKeyboardMarkup — сначала редактируем без клавиатуры
         await query.edit_message_text(
             f"🌟 *Твоя персональная рутина готова!*\n\n"
             f"🌅 *Утренний уход:*\n{morning_text}\n\n"
             f"🌙 *Вечерний уход:*\n{evening_text}\n\n"
             f"_{DISCLAIMER}_",
             parse_mode="Markdown",
-            reply_markup=main_menu_keyboard(),
         )
 
-        # Send main menu message
+        # Отправляем новое сообщение с меню
         await context.bot.send_message(
             chat_id=user_id,
             text="Используй меню ниже для навигации 👇",
