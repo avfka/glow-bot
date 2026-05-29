@@ -1,6 +1,6 @@
 import unittest
 
-from services.tracking import calculate_streak
+from services.tracking import apply_tracking_toggle, calculate_streak
 
 
 class CalculateStreakTest(unittest.TestCase):
@@ -62,6 +62,38 @@ class CalculateStreakTest(unittest.TestCase):
                 yesterday_complete=False,
             ),
             0,
+        )
+
+
+class ApplyTrackingToggleTest(unittest.TestCase):
+    def test_toggles_morning_without_losing_evening(self):
+        self.assertEqual(
+            apply_tracking_toggle(
+                action="morning",
+                morning_done=False,
+                evening_done=True,
+            ),
+            (True, True),
+        )
+
+    def test_toggles_evening_without_losing_pending_morning(self):
+        self.assertEqual(
+            apply_tracking_toggle(
+                action="evening",
+                morning_done=True,
+                evening_done=False,
+            ),
+            (True, True),
+        )
+
+    def test_ignores_unknown_action(self):
+        self.assertEqual(
+            apply_tracking_toggle(
+                action="save",
+                morning_done=True,
+                evening_done=False,
+            ),
+            (True, False),
         )
 
 

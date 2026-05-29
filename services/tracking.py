@@ -27,6 +27,19 @@ def calculate_streak(
     return yesterday_streak if yesterday_complete else 0
 
 
+def apply_tracking_toggle(
+    *,
+    action: str,
+    morning_done: bool,
+    evening_done: bool,
+) -> tuple[bool, bool]:
+    if action == "morning":
+        return not morning_done, evening_done
+    if action == "evening":
+        return morning_done, not evening_done
+    return morning_done, evening_done
+
+
 async def save_tracking_status(
     session: "AsyncSession",
     user_id: int,

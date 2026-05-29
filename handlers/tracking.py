@@ -13,7 +13,7 @@ from telegram.ext import (
 from database import async_session_factory
 from database.repositories.gamification import ACHIEVEMENT_META
 from database.repositories.tracking import get_current_streak, get_today_tracking
-from services.tracking import save_tracking_status
+from services.tracking import apply_tracking_toggle, save_tracking_status
 from utils.keyboards import tracking_keyboard
 
 logger = logging.getLogger(__name__)
@@ -45,16 +45,21 @@ async def btn_track_toggle(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         await _save_tracking(query, context)
         return
 
-    async with async_session_factory() as session:
-        tracking = await get_today_tracking(session, user_id)
+    pending = context.user_data.get("pending_track")
+    if pending is not None:
+        morning_done = pending["morning_done"]
+        evening_done = pending["evening_done"]
+    else:
+        async with async_session_factory() as session:
+            tracking = await get_today_tracking(session, user_id)
+        morning_done = tracking.morning_done if tracking else False
+        evening_done = tracking.evening_done if tracking else False
 
-    morning_done = tracking.morning_done if tracking else False
-    evening_done = tracking.evening_done if tracking else False
-
-    if action == "morning":
-        morning_done = not morning_done
-    elif action == "evening":
-        evening_done = not evening_done
+    morning_done, evening_done = apply_tracking_toggle(
+        action=action,
+        morning_done=morning_done,
+        evening_done=evening_done,
+    )
 
     context.user_data["pending_track"] = {
         "morning_done": morning_done,
