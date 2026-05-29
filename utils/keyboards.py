@@ -7,7 +7,8 @@ def main_menu_keyboard() -> ReplyKeyboardMarkup:
         [
             [KeyboardButton("👤 Профиль"), KeyboardButton("🔍 Подбор продуктов")],
             [KeyboardButton("💆 Моя рутина"), KeyboardButton("🔍 Сканер состава")],
-            [KeyboardButton("🧴 Мои продукты"), KeyboardButton("⚙️ Настройки")],
+            [KeyboardButton("🧴 Мои продукты"), KeyboardButton("🏆 Лидерборд")],
+            [KeyboardButton("⚙️ Настройки")],
         ],
         resize_keyboard=True,
     )

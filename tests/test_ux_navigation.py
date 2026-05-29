@@ -10,7 +10,7 @@ class UXNavigationTest(unittest.TestCase):
         self.assertIn("🔍 Сканер состава", source)
         self.assertIn("🧴 Мои продукты", source)
         self.assertIn("⚙️ Настройки", source)
-        self.assertNotIn('KeyboardButton("🏆 Лидерборд")', source)
+        self.assertIn('KeyboardButton("🏆 Лидерборд")', source)
 
     def test_onboarding_start_callback_is_entry_point(self):
         tree = ast.parse(Path("handlers/onboarding.py").read_text())
