@@ -29,24 +29,54 @@ logger = logging.getLogger(__name__)
 WAIT_CATEGORY, WAIT_PICK = range(2)
 
 async def cmd_product_search(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    return await _start_product_search(update, context, from_callback=False)
+
+
+async def btn_start_product_search(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    return await _start_product_search(update, context, from_callback=True)
+
+
+async def _start_product_search(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    *,
+    from_callback: bool,
+) -> int:
     user_id = update.effective_user.id
     async with async_session_factory() as session:
         profile = await get_latest_profile(session, user_id)
 
+    query = update.callback_query if from_callback else None
+    if query:
+        await query.answer()
+
     if not profile:
-        await update.message.reply_text(
+        text = (
             "🔍 Сначала нужно создать профиль кожи.\n\n"
-            "После анализа я смогу подобрать продукты под твой тип кожи и цель ухода.",
-            reply_markup=product_search_empty_keyboard(),
+            "После анализа я смогу подобрать продукты под твой тип кожи и цель ухода."
         )
+        if query:
+            await query.edit_message_text(text, reply_markup=product_search_empty_keyboard())
+        else:
+            await update.message.reply_text(text, reply_markup=product_search_empty_keyboard())
         return ConversationHandler.END
 
-    await update.message.reply_text(
+    text = (
         "🔍 *Подбор продуктов*\n\n"
-        "Выбери категорию — я подберу лучшие варианты под твой профиль:",
-        parse_mode="Markdown",
-        reply_markup=product_category_keyboard(),
+        "Выбери категорию — я подберу лучшие варианты под твой профиль:"
     )
+    if query:
+        await query.edit_message_text(
+            text,
+            parse_mode="Markdown",
+            reply_markup=product_category_keyboard(),
+        )
+    else:
+        await update.message.reply_text(
+            text,
+            parse_mode="Markdown",
+            reply_markup=product_category_keyboard(),
+        )
     return WAIT_CATEGORY
 
 
@@ -221,6 +251,7 @@ def get_product_search_handler() -> ConversationHandler:
         entry_points=[
             CommandHandler("search", cmd_product_search),
             MessageHandler(filters.Regex("^🔍 Подбор продуктов$"), cmd_product_search),
+            CallbackQueryHandler(btn_start_product_search, pattern="^search:start$"),
         ],
         states={
             WAIT_CATEGORY: [

@@ -20,6 +20,7 @@ from database.repositories.routines import (
 from database.repositories.tracking import get_today_tracking
 from utils.keyboards import (
     main_menu_keyboard,
+    product_saved_keyboard,
     routine_period_keyboard,
     routine_steps_keyboard,
     start_onboarding_keyboard,
@@ -164,6 +165,7 @@ async def receive_product_for_step(update: Update, context: ContextTypes.DEFAULT
     await update.message.reply_text(
         f"✅ Продукт *{product_name}* добавлен в {period_ru} рутину!",
         parse_mode="Markdown",
+        reply_markup=product_saved_keyboard(),
     )
     return ConversationHandler.END
 
@@ -181,7 +183,10 @@ async def skip_assign(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
                 commit=False,
             )
             await session.commit()
-    await update.message.reply_text("Продукт убран с шага.")
+    await update.message.reply_text(
+        "Продукт убран с шага.",
+        reply_markup=product_saved_keyboard(),
+    )
     return ConversationHandler.END
 
 

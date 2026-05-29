@@ -24,6 +24,7 @@ def start_onboarding_keyboard() -> InlineKeyboardMarkup:
 
 def existing_profile_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
+        [InlineKeyboardButton("🔍 Подобрать продукты", callback_data="search:start")],
         [InlineKeyboardButton("✏️ Обновить профиль кожи", callback_data="onboarding:start")],
         [InlineKeyboardButton("⏰ Настроить напоминания", callback_data="settings:reminders")],
     ])
@@ -32,7 +33,10 @@ def existing_profile_keyboard() -> InlineKeyboardMarkup:
 def routine_ready_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("✅ Отметить выполнение", callback_data="routine:track")],
-        [InlineKeyboardButton("➕ Добавить свой продукт", callback_data="add_product")],
+        [
+            InlineKeyboardButton("🔍 Подобрать продукты", callback_data="search:start"),
+            InlineKeyboardButton("➕ Добавить свой", callback_data="add_product"),
+        ],
         [InlineKeyboardButton("⏰ Настроить напоминания", callback_data="settings:reminders")],
     ])
 
@@ -126,6 +130,7 @@ def routine_steps_keyboard(steps: list, period: str, step_products: dict) -> Inl
         product = step_products.get(f"{period}_{i}", "")
         label = f"{'✅' if product else '➕'} Шаг {i+1}: {step.get('name', '')}"
         rows.append([InlineKeyboardButton(label, callback_data=f"assign_product:{period}:{i}")])
+    rows.append([InlineKeyboardButton("🔍 Подобрать продукт", callback_data="search:start")])
     rows.append([InlineKeyboardButton("✅ Отметить выполнение", callback_data="routine:track")])
     return InlineKeyboardMarkup(rows)
 
@@ -159,8 +164,22 @@ def profile_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton("✅ Отметить выполнение", callback_data="routine:track"),
             InlineKeyboardButton("➕ Добавить продукт", callback_data="add_product"),
         ],
+        [InlineKeyboardButton("🔍 Подобрать продукты", callback_data="search:start")],
         [InlineKeyboardButton("✏️ Обновить профиль кожи", callback_data="profile:update")],
         [InlineKeyboardButton("⏰ Настроить напоминания", callback_data="settings:reminders")],
+    ])
+
+
+def product_saved_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("🌅 Утренняя рутина", callback_data="routine:morning"),
+            InlineKeyboardButton("🌙 Вечерняя рутина", callback_data="routine:evening"),
+        ],
+        [
+            InlineKeyboardButton("🔍 Подобрать ещё", callback_data="search:start"),
+            InlineKeyboardButton("➕ Добавить свой", callback_data="add_product"),
+        ],
     ])
 
 

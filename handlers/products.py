@@ -21,6 +21,7 @@ from utils.keyboards import (
     cancel_flow_keyboard,
     product_time_keyboard,
     product_type_keyboard,
+    product_saved_keyboard,
     products_list_keyboard,
 )
 
@@ -147,7 +148,11 @@ async def choose_product_time(update: Update, context: ContextTypes.DEFAULT_TYPE
     if result.routine_updated:
         text += "\n🔄 Рутина обновлена с учётом нового продукта!"
 
-    await query.edit_message_text(text, parse_mode="Markdown")
+    await query.edit_message_text(
+        text,
+        parse_mode="Markdown",
+        reply_markup=product_saved_keyboard(),
+    )
     return ConversationHandler.END
 
 

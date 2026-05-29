@@ -11,6 +11,24 @@ class UXNavigationTest(unittest.TestCase):
         self.assertIn("🧴 Мои продукты", source)
         self.assertIn("⚙️ Настройки", source)
         self.assertIn('KeyboardButton("🏆 Лидерборд")', source)
+        self.assertIn('callback_data="search:start"', source)
+
+    def test_product_search_has_inline_entry_point(self):
+        tree = ast.parse(Path("handlers/product_search.py").read_text())
+
+        self.assertTrue(
+            any(
+                isinstance(node, ast.Call)
+                and _call_name(node) == "CallbackQueryHandler"
+                and any(
+                    keyword.arg == "pattern"
+                    and isinstance(keyword.value, ast.Constant)
+                    and keyword.value.value == "^search:start$"
+                    for keyword in node.keywords
+                )
+                for node in ast.walk(tree)
+            )
+        )
 
     def test_onboarding_start_callback_is_entry_point(self):
         tree = ast.parse(Path("handlers/onboarding.py").read_text())
