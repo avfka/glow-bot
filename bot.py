@@ -1,6 +1,5 @@
 """GlowBot — AI-косметолог. Entry point."""
 import logging
-import sys
 
 from telegram import Update
 from telegram.ext import Application
@@ -17,12 +16,9 @@ from handlers.scanner import get_scanner_handler
 from handlers.settings import get_settings_handlers
 from handlers.tracking import get_tracking_handlers
 from scheduler import create_scheduler
+from utils.logging import configure_logging
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    stream=sys.stdout,
-)
+configure_logging(settings.telegram_bot_token)
 logger = logging.getLogger(__name__)
 
 
