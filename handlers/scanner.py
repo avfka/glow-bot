@@ -15,6 +15,7 @@ from telegram.ext import (
 
 from services import get_analyzer
 from services.scanner import scan_catalog_product, scan_ocr_ingredients
+from utils.marketplaces import merge_marketplace_urls, marketplace_search_urls
 from utils.keyboards import scan_method_keyboard, scan_retry_keyboard, scanner_result_keyboard
 
 logger = logging.getLogger(__name__)
@@ -77,8 +78,11 @@ async def receive_scan_query(update: Update, context: ContextTypes.DEFAULT_TYPE)
             result_text,
             parse_mode="Markdown",
             reply_markup=scanner_result_keyboard(
-                wb_url=product.wb_url,
-                za_url=product.za_url,
+                marketplace_urls=merge_marketplace_urls(
+                    f"{product.brand or ''} {product.name}".strip(),
+                    wb_url=product.wb_url,
+                    za_url=product.za_url,
+                ),
             ),
         )
         return ConversationHandler.END
@@ -143,7 +147,9 @@ async def receive_scan_photo(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await update.message.reply_text(
             result_text,
             parse_mode="Markdown",
-            reply_markup=scanner_result_keyboard(),
+            reply_markup=scanner_result_keyboard(
+                marketplace_urls=marketplace_search_urls(product_name),
+            ),
         )
 
     except Exception as e:

@@ -15,6 +15,7 @@ from database import async_session_factory
 from database.repositories.profiles import get_latest_profile
 from services.products import add_product_and_refresh_routine
 from services.product_recommendations import get_product_recommendations
+from utils.marketplaces import marketplace_search_urls
 from utils.keyboards import (
     CATEGORY_LABELS,
     product_category_keyboard,
@@ -132,8 +133,6 @@ async def btn_pick_recommendation(update: Update, context: ContextTypes.DEFAULT_
     if key_ingredients:
         ingredients_text = "\n*Ключевые ингредиенты:*\n" + "\n".join(f"• {i}" for i in key_ingredients[:3])
 
-    wb_query = full_name.replace(" ", "+")
-
     await query.edit_message_text(
         f"✨ *{full_name}*\n\n"
         f"💡 *Почему подходит:*\n{why}\n"
@@ -141,7 +140,10 @@ async def btn_pick_recommendation(update: Update, context: ContextTypes.DEFAULT_
         f"💰 Цена: {price}\n\n"
         "Добавить в рутину?",
         parse_mode="Markdown",
-        reply_markup=product_recommendation_keyboard(idx, wb_query=wb_query),
+        reply_markup=product_recommendation_keyboard(
+            idx,
+            marketplace_urls=marketplace_search_urls(full_name),
+        ),
     )
     return WAIT_PICK
 

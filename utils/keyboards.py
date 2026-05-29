@@ -198,14 +198,20 @@ def product_search_empty_keyboard() -> InlineKeyboardMarkup:
     ])
 
 
-def product_recommendation_keyboard(idx: int, wb_query: str = "", za_query: str = "") -> InlineKeyboardMarkup:
+def product_recommendation_keyboard(idx: int, marketplace_urls: dict[str, str] | None = None) -> InlineKeyboardMarkup:
     rows = [
         [InlineKeyboardButton("➕ Добавить в рутину", callback_data=f"add_rec:{idx}")],
     ]
-    if wb_query:
-        rows.append([InlineKeyboardButton("🛒 Найти на WB", url=f"https://www.wildberries.ru/catalog/0/search.aspx?search={wb_query}")])
-    if za_query:
-        rows.append([InlineKeyboardButton("🛒 Найти на ЗЯ", url=f"https://goldapple.ru/search?query={za_query}")])
+    marketplace_urls = marketplace_urls or {}
+    shop_buttons = []
+    if marketplace_urls.get("wb"):
+        shop_buttons.append(InlineKeyboardButton("WB", url=marketplace_urls["wb"]))
+    if marketplace_urls.get("ozon"):
+        shop_buttons.append(InlineKeyboardButton("Ozon", url=marketplace_urls["ozon"]))
+    if marketplace_urls.get("goldapple"):
+        shop_buttons.append(InlineKeyboardButton("ЗЯ", url=marketplace_urls["goldapple"]))
+    if shop_buttons:
+        rows.append(shop_buttons)
     return InlineKeyboardMarkup(rows)
 
 
@@ -236,12 +242,18 @@ def achievements_keyboard() -> InlineKeyboardMarkup:
 
 # ── Scanner ───────────────────────────────────────────────────────────────────
 
-def scanner_result_keyboard(wb_url: str = None, za_url: str = None) -> InlineKeyboardMarkup:
+def scanner_result_keyboard(marketplace_urls: dict[str, str] | None = None) -> InlineKeyboardMarkup:
     rows = []
-    if wb_url:
-        rows.append([InlineKeyboardButton("🛒 Найти на WB", url=wb_url)])
-    if za_url:
-        rows.append([InlineKeyboardButton("🛒 Найти на ЗЯ", url=za_url)])
+    marketplace_urls = marketplace_urls or {}
+    shop_buttons = []
+    if marketplace_urls.get("wb"):
+        shop_buttons.append(InlineKeyboardButton("WB", url=marketplace_urls["wb"]))
+    if marketplace_urls.get("ozon"):
+        shop_buttons.append(InlineKeyboardButton("Ozon", url=marketplace_urls["ozon"]))
+    if marketplace_urls.get("goldapple"):
+        shop_buttons.append(InlineKeyboardButton("ЗЯ", url=marketplace_urls["goldapple"]))
+    if shop_buttons:
+        rows.append(shop_buttons)
     rows.append([InlineKeyboardButton("🔍 Сканировать ещё", callback_data="scanner:new")])
     return InlineKeyboardMarkup(rows)
 

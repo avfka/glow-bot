@@ -62,8 +62,9 @@ def build_recommendation_prompt(profile, category_label: str) -> str:
         f"Цель: {goal}\n"
         f"Бюджет: {budget}\n"
         f"Аллергии: {allergies}\n\n"
-        "Только реальные бренды, доступные в России (La Roche-Posay, The Ordinary, Виши, "
-        "Bioderma, Garnier, CeraVe, Eucerin, Clinique и т.д.).\n\n"
+        "Только реальные бренды и продукты, которые обычно можно найти в российских онлайн-магазинах "
+        "(Wildberries, Ozon, Золотое Яблоко): La Roche-Posay, The Ordinary, Виши, Bioderma, "
+        "Garnier, CeraVe, Eucerin, Clinique и т.д.\n\n"
         "Ответь JSON:\n"
         '{"recommendations": ['
         '{"name": "...", "brand": "...", "why": "почему подходит 1-2 предложения", '
