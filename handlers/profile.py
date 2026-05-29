@@ -6,16 +6,15 @@ from telegram import Update
 from telegram.ext import CallbackQueryHandler, CommandHandler, ContextTypes, MessageHandler, filters
 
 from database import async_session_factory
-from database.queries import (
+from database.repositories.gamification import (
     ACHIEVEMENT_META,
-    get_current_streak,
-    get_latest_profile,
-    get_today_tracking,
-    get_user,
     get_user_achievements,
-    get_active_products,
 )
-from utils.keyboards import profile_keyboard
+from database.repositories.profiles import get_latest_profile
+from database.repositories.products import get_active_products
+from database.repositories.tracking import get_current_streak, get_today_tracking
+from database.repositories.users import get_user
+from utils.keyboards import start_onboarding_keyboard, profile_keyboard
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +50,9 @@ async def cmd_profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
     if not profile:
         await update.message.reply_text(
-            "👤 Профиль ещё не создан.\n\nПройди анализ кожи → /start"
+            "👤 Профиль ещё не создан.\n\n"
+            "Пройди короткий анализ кожи, чтобы получить рутину и персональные рекомендации.",
+            reply_markup=start_onboarding_keyboard(),
         )
         return
 
@@ -109,8 +110,8 @@ async def btn_profile_update(update: Update, context: ContextTypes.DEFAULT_TYPE)
     query = update.callback_query
     await query.answer()
     await query.edit_message_text(
-        "✏️ Чтобы обновить профиль кожи, пройди новый анализ.\n\n"
-        "Напиши /start — бот предложит обновить данные.",
+        "✏️ Чтобы обновить профиль кожи, пройди новый анализ.",
+        reply_markup=start_onboarding_keyboard(),
     )
 
 

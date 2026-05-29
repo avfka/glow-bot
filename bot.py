@@ -3,10 +3,10 @@ import logging
 import sys
 
 from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters
+from telegram.ext import Application
 
 from config import settings
-from database import init_db
+from handlers.errors import handle_error
 from handlers.onboarding import get_onboarding_handler
 from handlers.routine import get_routine_handlers
 from handlers.profile import get_profile_handlers
@@ -15,6 +15,7 @@ from handlers.leaderboard import get_leaderboard_handlers
 from handlers.products import get_products_handlers
 from handlers.scanner import get_scanner_handler
 from handlers.settings import get_settings_handlers
+from handlers.tracking import get_tracking_handlers
 from scheduler import create_scheduler
 
 logging.basicConfig(
@@ -26,8 +27,6 @@ logger = logging.getLogger(__name__)
 
 
 async def post_init(application: Application) -> None:
-    await init_db()
-    logger.info("Database initialised")
     scheduler = create_scheduler(application.bot)
     scheduler.start()
     application.bot_data["scheduler"] = scheduler
@@ -61,6 +60,10 @@ def main() -> None:
     for h in get_routine_handlers():
         app.add_handler(h)
 
+    # Tracking commands and callbacks
+    for h in get_tracking_handlers():
+        app.add_handler(h)
+
     # Product search (AI recommendations)
     app.add_handler(get_product_search_handler())
 
@@ -78,6 +81,8 @@ def main() -> None:
     # Settings
     for h in get_settings_handlers():
         app.add_handler(h)
+
+    app.add_error_handler(handle_error)
 
     if settings.webhook_url:
         logger.info(f"Starting webhook on port {settings.port}")

@@ -6,6 +6,7 @@ from typing import Optional
 from openai import AsyncOpenAI
 
 from config import settings
+from services.ai_schemas import ProductScoreOutput, RoutineOutput, SkinAnalysisOutput
 from services.skin_analyzer import SkinAnalyzer, SkinAnalysisResult
 
 logger = logging.getLogger(__name__)
@@ -105,16 +106,18 @@ class OpenAIAnalyzer(SkinAnalyzer):
 
         raw = response.choices[0].message.content
         data = json.loads(raw)
+        validated = SkinAnalysisOutput.model_validate(data)
+        raw_response = validated.model_dump()
 
         return SkinAnalysisResult(
-            skin_type=data.get("skin_type", skin_type),
-            problems=data.get("problems", problems),
-            recommended_ingredients=data.get("recommended_ingredients", []),
-            avoid_ingredients=data.get("avoid_ingredients", []),
-            morning_routine=data.get("morning_routine", []),
-            evening_routine=data.get("evening_routine", []),
-            confidence_score=float(data.get("confidence_score", 0.8)),
-            raw_response=data,
+            skin_type=validated.skin_type or skin_type,
+            problems=validated.problems or problems,
+            recommended_ingredients=validated.recommended_ingredients,
+            avoid_ingredients=validated.avoid_ingredients,
+            morning_routine=validated.morning_steps(),
+            evening_routine=validated.evening_steps(),
+            confidence_score=validated.confidence_score,
+            raw_response=raw_response,
         )
 
     async def generate_routine(
@@ -173,15 +176,16 @@ class OpenAIAnalyzer(SkinAnalyzer):
         )
 
         data = json.loads(response.choices[0].message.content)
+        validated = RoutineOutput.model_validate(data)
         return SkinAnalysisResult(
             skin_type=skin_type,
             problems=problems,
-            recommended_ingredients=data.get("recommended_ingredients", []),
-            avoid_ingredients=data.get("avoid_ingredients", []),
-            morning_routine=data.get("morning_routine", []),
-            evening_routine=data.get("evening_routine", []),
+            recommended_ingredients=validated.recommended_ingredients,
+            avoid_ingredients=validated.avoid_ingredients,
+            morning_routine=validated.morning_steps(),
+            evening_routine=validated.evening_steps(),
             confidence_score=1.0,
-            raw_response=data,
+            raw_response=validated.model_dump(),
         )
 
     async def extract_ingredients_from_image(self, photo_base64: str) -> str:
@@ -262,4 +266,5 @@ class OpenAIAnalyzer(SkinAnalyzer):
             response_format={"type": "json_object"},
             max_tokens=800,
         )
-        return json.loads(response.choices[0].message.content)
+        data = json.loads(response.choices[0].message.content)
+        return ProductScoreOutput.model_validate(data).model_dump()

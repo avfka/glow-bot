@@ -1,12 +1,13 @@
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
 
-# ── Reply keyboard (main menu — 4 кнопки) ────────────────────────────────────
+# -- Reply keyboard (main menu) ------------------------------------------------
 
 def main_menu_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         [
             [KeyboardButton("👤 Профиль"), KeyboardButton("🔍 Подбор продуктов")],
-            [KeyboardButton("💆 Моя рутина"), KeyboardButton("🏆 Лидерборд")],
+            [KeyboardButton("💆 Моя рутина"), KeyboardButton("🔍 Сканер состава")],
+            [KeyboardButton("🧴 Мои продукты"), KeyboardButton("⚙️ Настройки")],
         ],
         resize_keyboard=True,
     )
@@ -17,6 +18,27 @@ def main_menu_keyboard() -> ReplyKeyboardMarkup:
 def start_onboarding_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("🌟 Начать анализ", callback_data="onboarding:start")]
+    ])
+
+
+def existing_profile_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("✏️ Обновить профиль кожи", callback_data="onboarding:start")],
+        [InlineKeyboardButton("⏰ Настроить напоминания", callback_data="settings:reminders")],
+    ])
+
+
+def routine_ready_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("✅ Отметить выполнение", callback_data="routine:track")],
+        [InlineKeyboardButton("➕ Добавить свой продукт", callback_data="add_product")],
+        [InlineKeyboardButton("⏰ Настроить напоминания", callback_data="settings:reminders")],
+    ])
+
+
+def cancel_flow_keyboard(callback_data: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("Отмена", callback_data=callback_data)],
     ])
 
 
@@ -115,7 +137,7 @@ def tracking_keyboard(morning_done: bool, evening_done: bool) -> InlineKeyboardM
             InlineKeyboardButton(f"{morning_icon} Утро", callback_data="track:morning"),
             InlineKeyboardButton(f"{evening_icon} Вечер", callback_data="track:evening"),
         ],
-        [InlineKeyboardButton("💾 Сохранить", callback_data="track:save")],
+        [InlineKeyboardButton("💾 Сохранить отметку", callback_data="track:save")],
     ])
 
 
@@ -132,6 +154,10 @@ def reminder_done_keyboard(period: str) -> InlineKeyboardMarkup:
 
 def profile_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("✅ Отметить выполнение", callback_data="routine:track"),
+            InlineKeyboardButton("➕ Добавить продукт", callback_data="add_product"),
+        ],
         [InlineKeyboardButton("✏️ Обновить профиль кожи", callback_data="profile:update")],
         [InlineKeyboardButton("⏰ Настроить напоминания", callback_data="settings:reminders")],
     ])
@@ -161,7 +187,14 @@ def product_category_keyboard() -> InlineKeyboardMarkup:
         if i + 1 < len(cats):
             row.append(InlineKeyboardButton(cats[i+1][0], callback_data=f"search_cat:{cats[i+1][1]}"))
         rows.append(row)
+    rows.append([InlineKeyboardButton("Отмена", callback_data="cancel:search")])
     return InlineKeyboardMarkup(rows)
+
+
+def product_search_empty_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("🌟 Начать анализ", callback_data="onboarding:start")],
+    ])
 
 
 def product_recommendation_keyboard(idx: int, wb_query: str = "", za_query: str = "") -> InlineKeyboardMarkup:
@@ -181,6 +214,7 @@ def search_results_keyboard(recommendations: list) -> InlineKeyboardMarkup:
         name = rec.get("name", f"Продукт {i+1}")[:40]
         rows.append([InlineKeyboardButton(f"{'✅' if rec.get('selected') else '○'} {name}", callback_data=f"pick_rec:{i}")])
     rows.append([InlineKeyboardButton("🔄 Другая категория", callback_data="search:back")])
+    rows.append([InlineKeyboardButton("Отмена", callback_data="cancel:search")])
     return InlineKeyboardMarkup(rows)
 
 
@@ -215,10 +249,17 @@ def scan_method_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("📝 Ввести название", callback_data="scan:by_name")],
         [InlineKeyboardButton("📷 Сфотографировать состав", callback_data="scan:by_photo")],
+        [InlineKeyboardButton("Отмена", callback_data="cancel:scan")],
     ])
 
 
-# ── Settings ──────────────────────────────────────────────────────────────────
+def scan_retry_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("📷 Сфотографировать ещё раз", callback_data="scan:by_photo")],
+        [InlineKeyboardButton("📝 Ввести название", callback_data="scan:by_name")],
+        [InlineKeyboardButton("Отмена", callback_data="cancel:scan")],
+    ])
+
 
 # ── Settings ──────────────────────────────────────────────────────────────────
 
@@ -239,6 +280,7 @@ def timezone_keyboard() -> InlineKeyboardMarkup:
         ("🇰🇿 Алматы (UTC+6)", "Asia/Almaty"),
     ]
     rows = [[InlineKeyboardButton(label, callback_data=f"tz:{tz}")] for label, tz in timezones]
+    rows.append([InlineKeyboardButton("Отмена", callback_data="cancel:settings")])
     return InlineKeyboardMarkup(rows)
 
 
@@ -258,6 +300,7 @@ def product_type_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton("☀️ SPF", callback_data="ptype:spf"),
             InlineKeyboardButton("📦 Другое", callback_data="ptype:other"),
         ],
+        [InlineKeyboardButton("Отмена", callback_data="cancel:products")],
     ])
 
 
@@ -267,7 +310,8 @@ def product_time_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton("🌅 Утро", callback_data="ptime:morning"),
             InlineKeyboardButton("🌙 Вечер", callback_data="ptime:evening"),
             InlineKeyboardButton("🔄 Оба", callback_data="ptime:both"),
-        ]
+        ],
+        [InlineKeyboardButton("Отмена", callback_data="cancel:products")],
     ])
 
 

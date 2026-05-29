@@ -12,22 +12,17 @@ from telegram.ext import (
 )
 
 from database import async_session_factory
-from database.queries import (
+from database.repositories.routines import (
     get_latest_routine,
     get_routine_products,
-    get_today_tracking,
     set_routine_product,
-    upsert_tracking,
-    get_current_streak,
-    get_tracking_by_date,
-    check_and_grant_streak_achievements,
-    upsert_user_league,
-    ACHIEVEMENT_META,
 )
+from database.repositories.tracking import get_today_tracking
 from utils.keyboards import (
     main_menu_keyboard,
     routine_period_keyboard,
     routine_steps_keyboard,
+    start_onboarding_keyboard,
     tracking_keyboard,
 )
 
@@ -77,7 +72,9 @@ async def cmd_routine(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
     if not routine:
         await update.message.reply_text(
-            "💆 У тебя пока нет рутины.\n\nПройди анализ кожи → /start"
+            "💆 У тебя пока нет рутины.\n\n"
+            "Сначала создай профиль кожи — после анализа я составлю утренний и вечерний уход.",
+            reply_markup=start_onboarding_keyboard(),
         )
         return
 
@@ -99,7 +96,10 @@ async def btn_show_period(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         step_products = await get_routine_products(session, user_id)
 
     if not routine:
-        await query.edit_message_text("Рутина не найдена. Напиши /start")
+        await query.edit_message_text(
+            "Рутина не найдена. Сначала создай профиль кожи.",
+            reply_markup=start_onboarding_keyboard(),
+        )
         return
 
     if period == "morning":
@@ -156,7 +156,9 @@ async def receive_product_for_step(update: Update, context: ContextTypes.DEFAULT
             period=assign["period"],
             step_index=assign["step_index"],
             product_name=product_name,
+            commit=False,
         )
+        await session.commit()
 
     period_ru = "утренней" if assign["period"] == "morning" else "вечерней"
     await update.message.reply_text(
@@ -176,7 +178,9 @@ async def skip_assign(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
                 period=assign["period"],
                 step_index=assign["step_index"],
                 product_name="",
+                commit=False,
             )
+            await session.commit()
     await update.message.reply_text("Продукт убран с шага.")
     return ConversationHandler.END
 
@@ -193,154 +197,11 @@ async def btn_track_from_routine(update: Update, context: ContextTypes.DEFAULT_T
     evening_done = tracking.evening_done if tracking else False
 
     await query.edit_message_text(
-        "✅ *Отметь выполнение рутины на сегодня:*",
+        "✅ *Отметь выполнение рутины на сегодня:*\n\n"
+        "Выбери утро и/или вечер, затем нажми *Сохранить отметку*.",
         parse_mode="Markdown",
         reply_markup=tracking_keyboard(morning_done, evening_done),
     )
-
-
-async def btn_track_toggle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    query = update.callback_query
-    await query.answer()
-    user_id = query.from_user.id
-    action = query.data.split(":")[1]
-
-    if action == "save":
-        await _save_tracking(query, context)
-        return
-
-    async with async_session_factory() as session:
-        tracking = await get_today_tracking(session, user_id)
-
-    morning_done = tracking.morning_done if tracking else False
-    evening_done = tracking.evening_done if tracking else False
-
-    if action == "morning":
-        morning_done = not morning_done
-    elif action == "evening":
-        evening_done = not evening_done
-
-    context.user_data["pending_track"] = {
-        "morning_done": morning_done,
-        "evening_done": evening_done,
-    }
-    await query.edit_message_reply_markup(
-        reply_markup=tracking_keyboard(morning_done, evening_done)
-    )
-
-
-async def _save_tracking(query, context: ContextTypes.DEFAULT_TYPE) -> None:
-    from datetime import date, timedelta
-    user_id = query.from_user.id
-    pending = context.user_data.pop("pending_track", None)
-
-    if pending is None:
-        async with async_session_factory() as session:
-            tracking = await get_today_tracking(session, user_id)
-        pending = {
-            "morning_done": tracking.morning_done if tracking else False,
-            "evening_done": tracking.evening_done if tracking else False,
-        }
-
-    morning_done = pending["morning_done"]
-    evening_done = pending["evening_done"]
-
-    async with async_session_factory() as session:
-        yesterday = date.today() - timedelta(days=1)
-        yesterday_tracking = await get_tracking_by_date(session, user_id, yesterday)
-        yesterday_streak = yesterday_tracking.streak_days if yesterday_tracking else 0
-        yesterday_complete = bool(
-            yesterday_tracking
-            and yesterday_tracking.morning_done
-            and yesterday_tracking.evening_done
-        )
-        today_tracking = await get_today_tracking(session, user_id)
-        current_streak = today_tracking.streak_days if today_tracking else 0
-
-        if morning_done and evening_done:
-            streak = (yesterday_streak + 1) if yesterday_complete else max(current_streak, 1)
-        else:
-            streak = yesterday_streak if yesterday_complete else 0
-
-        await upsert_tracking(
-            session=session,
-            user_id=user_id,
-            morning_done=morning_done,
-            evening_done=evening_done,
-            streak_days=streak,
-        )
-
-        # Achievements + league
-        new_achievements = []
-        if morning_done and evening_done:
-            new_achievements = await check_and_grant_streak_achievements(session, user_id, streak)
-            await upsert_user_league(session, user_id, streak)
-
-    done_parts = []
-    if morning_done:
-        done_parts.append("🌅 утренняя")
-    if evening_done:
-        done_parts.append("🌙 вечерняя")
-
-    done_text = (" и ".join(done_parts) + " рутина выполнена!") if done_parts else "Ничего не отмечено."
-    streak_text = ""
-    if morning_done and evening_done:
-        streak_text = f"\n\n🔥 *Стрик: {streak} дн.*"
-
-    ach_text = ""
-    for code in new_achievements:
-        meta = ACHIEVEMENT_META.get(code)
-        if meta:
-            ach_text += f"\n🎉 Новое достижение: *{meta[0]} {meta[1]}*"
-
-    await query.edit_message_text(
-        f"💾 Сохранено!\n\n{done_text}{streak_text}{ach_text}",
-        parse_mode="Markdown",
-    )
-
-
-async def quick_track(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    from datetime import date, timedelta
-    query = update.callback_query
-    await query.answer()
-    user_id = query.from_user.id
-    period = query.data.split(":")[1]
-
-    async with async_session_factory() as session:
-        tracking = await get_today_tracking(session, user_id)
-        morning_done = tracking.morning_done if tracking else False
-        evening_done = tracking.evening_done if tracking else False
-
-        if period == "morning":
-            morning_done = True
-        else:
-            evening_done = True
-
-        yesterday = date.today() - timedelta(days=1)
-        yesterday_tracking = await get_tracking_by_date(session, user_id, yesterday)
-        yesterday_streak = yesterday_tracking.streak_days if yesterday_tracking else 0
-        yesterday_complete = bool(
-            yesterday_tracking
-            and yesterday_tracking.morning_done
-            and yesterday_tracking.evening_done
-        )
-        current_streak = tracking.streak_days if tracking else 0
-
-        if morning_done and evening_done:
-            streak = (yesterday_streak + 1) if yesterday_complete else max(current_streak, 1)
-        else:
-            streak = current_streak
-
-        await upsert_tracking(
-            session=session,
-            user_id=user_id,
-            morning_done=morning_done,
-            evening_done=evening_done,
-            streak_days=streak,
-        )
-
-    label = "Утренняя" if period == "morning" else "Вечерняя"
-    await query.edit_message_text(f"✅ {label} рутина отмечена!\n🔥 Стрик: {streak} дн.")
 
 
 def get_routine_assign_handler() -> ConversationHandler:
@@ -365,7 +226,5 @@ def get_routine_handlers() -> list:
         MessageHandler(filters.Regex("^💆 Моя рутина$"), cmd_routine),
         CallbackQueryHandler(btn_show_period, pattern="^routine:(morning|evening)$"),
         CallbackQueryHandler(btn_track_from_routine, pattern="^routine:track$"),
-        CallbackQueryHandler(btn_track_toggle, pattern="^track:"),
-        CallbackQueryHandler(quick_track, pattern="^quick_track:"),
         get_routine_assign_handler(),
     ]

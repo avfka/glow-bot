@@ -1,7 +1,6 @@
 """Onboarding flow: /start → photo → 7 questions → analysis → routine."""
 import base64
 import logging
-from typing import Optional
 
 from telegram import Update
 from telegram.ext import (
@@ -14,23 +13,20 @@ from telegram.ext import (
 )
 
 from database import async_session_factory
-from database.queries import (
-    create_routine,
-    create_profile_version,
-    get_or_create_user,
-    save_skin_analysis,
-    upsert_reminder,
-)
+from database.repositories.profiles import get_latest_profile, save_skin_analysis
+from database.repositories.users import get_or_create_user
 from services import get_analyzer
+from services.onboarding import complete_onboarding
 from utils.keyboards import (
     budget_keyboard,
     confirm_analysis_keyboard,
+    existing_profile_keyboard,
     goal_keyboard,
     main_menu_keyboard,
+    routine_ready_keyboard,
     skin_problems_keyboard,
     skin_type_keyboard,
     start_onboarding_keyboard,
-    timezone_keyboard,
 )
 
 logger = logging.getLogger(__name__)
@@ -45,12 +41,9 @@ logger = logging.getLogger(__name__)
     WAIT_BUDGET,
     WAIT_GOAL,
     WAIT_AGE,
-    WAIT_MORNING_TIME,
-    WAIT_EVENING_TIME,
-    WAIT_TIMEZONE,
     WAIT_CONFIRM,
     WAIT_CORRECTION,
-) = range(13)
+) = range(10)
 
 PROBLEMS_RU = {
     "acne": "Акне",
@@ -78,12 +71,32 @@ DISCLAIMER = (
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     user = update.effective_user
     async with async_session_factory() as session:
-        await get_or_create_user(session, user.id, user.full_name)
+        await get_or_create_user(
+            session, user.id, user.full_name, commit=False
+        )
+        await session.commit()
+        profile = await get_latest_profile(session, user.id)
 
     # Check referral
     args = context.args
     if args and args[0].startswith("ref_"):
         context.user_data["referrer_id"] = args[0][4:]
+
+    if profile:
+        await update.message.reply_text(
+            f"👋 {user.first_name}, профиль кожи уже готов.\n\n"
+            "Что можно сделать сейчас:\n"
+            "• открыть рутину ухода\n"
+            "• проверить состав продукта\n"
+            "• подобрать косметику\n"
+            "• обновить профиль, если кожа изменилась",
+            reply_markup=main_menu_keyboard(),
+        )
+        await update.message.reply_text(
+            "Для повторного анализа нажми кнопку ниже.",
+            reply_markup=existing_profile_keyboard(),
+        )
+        return ConversationHandler.END
 
     await update.message.reply_text(
         f"👋 Привет, {user.first_name}!\n\n"
@@ -104,7 +117,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 async def onboarding_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
     await query.answer()
-    context.user_data.setdefault("onboarding", {})
+    context.user_data["onboarding"] = {}
 
     await query.edit_message_text(
         "📸 *Шаг 1 из 7 — Фото кожи*\n\n"
@@ -249,78 +262,18 @@ async def receive_age(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
         return WAIT_AGE
 
     context.user_data["onboarding"]["age"] = int(text)
-
-    await update.message.reply_text(
-        "⏰ *Напоминания*\n\nВ какое время тебе удобно напоминать об *утренней* рутине?\n\n"
-        "Напиши в формате *ЧЧ:ММ* _(например: 08:00)_\n"
-        "или /skip чтобы пропустить",
-        parse_mode="Markdown",
-    )
-    return WAIT_MORNING_TIME
-
-
-async def receive_morning_time(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    time_str = update.message.text.strip()
-    if not _validate_time(time_str):
-        await update.message.reply_text("Неверный формат. Используй ЧЧ:ММ, например 08:30")
-        return WAIT_MORNING_TIME
-
-    context.user_data["onboarding"]["morning_time"] = time_str
-    await update.message.reply_text(
-        "🌙 В какое время напоминать о *вечерней* рутине?\n\n"
-        "Напиши в формате *ЧЧ:ММ* или /skip",
-        parse_mode="Markdown",
-    )
-    return WAIT_EVENING_TIME
-
-
-async def skip_morning_time(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     context.user_data["onboarding"]["morning_time"] = None
-    await update.message.reply_text(
-        "🌙 В какое время напоминать о *вечерней* рутине?\n\n"
-        "Напиши в формате *ЧЧ:ММ* или /skip",
-        parse_mode="Markdown",
-    )
-    return WAIT_EVENING_TIME
-
-
-async def receive_evening_time(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    time_str = update.message.text.strip()
-    if not _validate_time(time_str):
-        await update.message.reply_text("Неверный формат. Используй ЧЧ:ММ, например 21:00")
-        return WAIT_EVENING_TIME
-
-    context.user_data["onboarding"]["evening_time"] = time_str
-    await _ask_timezone(update)
-    return WAIT_TIMEZONE
-
-
-async def skip_evening_time(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     context.user_data["onboarding"]["evening_time"] = None
-    await _ask_timezone(update)
-    return WAIT_TIMEZONE
+    context.user_data["onboarding"]["timezone"] = "Europe/Moscow"
 
-
-async def _ask_timezone(update: Update) -> None:
-    await update.message.reply_text(
-        "🌍 Выбери свой часовой пояс:",
-        reply_markup=timezone_keyboard(),
+    message = await update.message.reply_text(
+        "⏳ Анализирую твою кожу... Это займёт несколько секунд."
     )
+    return await _run_analysis(message, context, user_id=update.effective_user.id)
 
 
-async def choose_timezone(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    query = update.callback_query
-    await query.answer()
-    tz = query.data.split(":", 1)[1]
-    context.user_data["onboarding"]["timezone"] = tz
-
-    await query.edit_message_text("⏳ Анализирую твою кожу... Это займёт несколько секунд.")
-    return await _run_analysis(query, context)
-
-
-async def _run_analysis(query, context: ContextTypes.DEFAULT_TYPE) -> int:
+async def _run_analysis(target, context: ContextTypes.DEFAULT_TYPE, user_id: int) -> int:
     data = context.user_data["onboarding"]
-    user_id = query.from_user.id
 
     try:
         analyzer = get_analyzer()
@@ -343,7 +296,9 @@ async def _run_analysis(query, context: ContextTypes.DEFAULT_TYPE) -> int:
                 ai_raw_response=result.raw_response or {},
                 ai_detected_problems=result.problems,
                 skin_score=result.raw_response.get("skin_score") if result.raw_response else None,
+                commit=False,
             )
+            await session.commit()
             context.user_data["onboarding"]["analysis_id"] = analysis.id
 
         problems_text = "\n".join(f"• {PROBLEMS_RU.get(p, p)}" for p in result.problems) if result.problems else "• не обнаружено"
@@ -394,7 +349,7 @@ async def _run_analysis(query, context: ContextTypes.DEFAULT_TYPE) -> int:
             removed_ru = ", ".join(PROBLEMS_RU.get(p, p) for p in removed)
             diff_text += f"\n💡 *AI не подтвердил:* {removed_ru}"
 
-        await query.edit_message_text(
+        await target.edit_text(
             f"🔍 *Результат анализа*\n\n"
             f"*Тип кожи:* {skin_type_labels.get(result.skin_type, result.skin_type)}\n\n"
             f"*Обнаруженные проблемы:*\n{problems_text}\n"
@@ -402,7 +357,8 @@ async def _run_analysis(query, context: ContextTypes.DEFAULT_TYPE) -> int:
             f"{score_text}"
             f"{ingredients_text}\n\n"
             f"*Уверенность анализа:* {int(result.confidence_score * 100)}%\n\n"
-            "Всё верно? Или хочешь добавить / исправить?",
+            "Я использую этот список, чтобы составить рутину. "
+            "Всё верно или хочешь исправить?",
             parse_mode="Markdown",
             reply_markup=confirm_analysis_keyboard(),
         )
@@ -410,7 +366,7 @@ async def _run_analysis(query, context: ContextTypes.DEFAULT_TYPE) -> int:
 
     except Exception as e:
         logger.error(f"Analysis error for user {user_id}: {e}", exc_info=True)
-        await query.edit_message_text(
+        await target.edit_text(
             "😔 Произошла ошибка при анализе. Попробуем ещё раз?\n\n"
             "Используй /start чтобы начать заново."
         )
@@ -474,62 +430,13 @@ async def _save_and_generate_routine(
     await query.edit_message_text("⏳ Составляю твою персональную рутину...")
 
     try:
-        async with async_session_factory() as session:
-            # Update analysis with confirmed problems
-            analysis_id = data.get("analysis_id")
-            if analysis_id:
-                from database.queries import update_analysis_user_confirmation
-                await update_analysis_user_confirmation(
-                    session, analysis_id, confirmed_problems, user_corrections
-                )
-
-            # Save profile version
-            profile = await create_profile_version(
-                session=session,
-                user_id=user_id,
-                skin_type=data.get("skin_type", "combination"),
-                skin_problems=confirmed_problems,
-                allergies=data.get("allergies"),
-                budget=data.get("budget", "medium"),
-                goal=data.get("goal", "hydration"),
-                age=data.get("age", 25),
-                changed_by="user" if user_corrections else "ai",
-                change_reason="Онбординг",
-            )
-
-            # Generate routine
-            analyzer = get_analyzer()
-            routine_result = await analyzer.generate_routine(
-                profile={
-                    "skin_type": profile.skin_type,
-                    "skin_problems": confirmed_problems,
-                    "allergies": profile.allergies,
-                    "budget": profile.budget,
-                    "goal": profile.goal,
-                    "age": profile.age,
-                },
-                user_products=[],
-            )
-
-            await create_routine(
-                session=session,
-                user_id=user_id,
-                morning_steps=routine_result.morning_routine,
-                evening_steps=routine_result.evening_routine,
-                reason_for_change="Первичный анализ",
-            )
-
-            # Save reminders
-            morning_time = _parse_time(data.get("morning_time"))
-            evening_time = _parse_time(data.get("evening_time"))
-            if morning_time or evening_time:
-                await upsert_reminder(
-                    session=session,
-                    user_id=user_id,
-                    morning_time=morning_time,
-                    evening_time=evening_time,
-                    timezone=data.get("timezone", "Europe/Moscow"),
-                )
+        completion = await complete_onboarding(
+            user_id=user_id,
+            onboarding_data=data,
+            confirmed_problems=confirmed_problems,
+            user_corrections=user_corrections,
+        )
+        routine_result = completion.routine_result
 
         # Format morning routine
         morning_text = _format_routine_steps(routine_result.morning_routine)
@@ -542,12 +449,16 @@ async def _save_and_generate_routine(
             f"🌙 *Вечерний уход:*\n{evening_text}\n\n"
             f"_{DISCLAIMER}_",
             parse_mode="Markdown",
+            reply_markup=routine_ready_keyboard(),
         )
 
         # Отправляем новое сообщение с меню
         await context.bot.send_message(
             chat_id=user_id,
-            text="Используй меню ниже для навигации 👇",
+            text=(
+                "Рутина сохранена. Следующий полезный шаг — добавить свои продукты "
+                "или включить напоминания."
+            ),
             reply_markup=main_menu_keyboard(),
         )
 
@@ -573,28 +484,6 @@ def _format_routine_steps(steps: list) -> str:
     return "\n".join(lines)
 
 
-def _validate_time(time_str: str) -> bool:
-    try:
-        parts = time_str.split(":")
-        if len(parts) != 2:
-            return False
-        h, m = int(parts[0]), int(parts[1])
-        return 0 <= h <= 23 and 0 <= m <= 59
-    except Exception:
-        return False
-
-
-def _parse_time(time_str: Optional[str]):
-    if not time_str:
-        return None
-    try:
-        from datetime import time
-        parts = time_str.split(":")
-        return time(int(parts[0]), int(parts[1]))
-    except Exception:
-        return None
-
-
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     context.user_data.pop("onboarding", None)
     await update.message.reply_text(
@@ -605,7 +494,10 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
 def get_onboarding_handler() -> ConversationHandler:
     return ConversationHandler(
-        entry_points=[CommandHandler("start", cmd_start)],
+        entry_points=[
+            CommandHandler("start", cmd_start),
+            CallbackQueryHandler(onboarding_start, pattern="^onboarding:start$"),
+        ],
         states={
             WAIT_START: [
                 CallbackQueryHandler(onboarding_start, pattern="^onboarding:start$"),
@@ -633,17 +525,6 @@ def get_onboarding_handler() -> ConversationHandler:
             ],
             WAIT_AGE: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, receive_age),
-            ],
-            WAIT_MORNING_TIME: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, receive_morning_time),
-                CommandHandler("skip", skip_morning_time),
-            ],
-            WAIT_EVENING_TIME: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, receive_evening_time),
-                CommandHandler("skip", skip_evening_time),
-            ],
-            WAIT_TIMEZONE: [
-                CallbackQueryHandler(choose_timezone, pattern="^tz:"),
             ],
             WAIT_CONFIRM: [
                 CallbackQueryHandler(confirm_analysis, pattern="^confirm:"),

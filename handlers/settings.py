@@ -13,8 +13,8 @@ from telegram.ext import (
 )
 
 from database import async_session_factory
-from database.queries import get_reminder, upsert_reminder
-from utils.keyboards import settings_keyboard, timezone_keyboard
+from database.repositories.reminders import get_reminder, upsert_reminder
+from utils.keyboards import settings_keyboard, start_onboarding_keyboard, timezone_keyboard
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +54,15 @@ async def btn_settings_reminders(update: Update, context: ContextTypes.DEFAULT_T
     return WAIT_MORNING_REMINDER
 
 
+async def btn_settings_profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    await query.answer()
+    await query.edit_message_text(
+        "👤 Чтобы обновить профиль кожи, запусти новый анализ.",
+        reply_markup=start_onboarding_keyboard(),
+    )
+
+
 async def receive_morning_reminder(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     text = update.message.text.strip()
     if not _validate_time(text):
@@ -83,13 +92,27 @@ async def receive_evening_reminder(update: Update, context: ContextTypes.DEFAULT
         await update.message.reply_text("Неверный формат. Используй ЧЧ:ММ, например 21:00")
         return WAIT_EVENING_REMINDER
 
-    context.user_data["new_reminder"]["evening"] = text
+    reminder_data = context.user_data.get("new_reminder")
+    if reminder_data is None:
+        await update.message.reply_text(
+            "Сессия настройки устарела. Открой /settings и начни заново."
+        )
+        return ConversationHandler.END
+
+    reminder_data["evening"] = text
     await update.message.reply_text("🌍 Выбери часовой пояс:", reply_markup=timezone_keyboard())
     return WAIT_REMINDER_TZ
 
 
 async def skip_evening_reminder(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    context.user_data["new_reminder"]["evening"] = None
+    reminder_data = context.user_data.get("new_reminder")
+    if reminder_data is None:
+        await update.message.reply_text(
+            "Сессия настройки устарела. Открой /settings и начни заново."
+        )
+        return ConversationHandler.END
+
+    reminder_data["evening"] = None
     await update.message.reply_text("🌍 Выбери часовой пояс:", reply_markup=timezone_keyboard())
     return WAIT_REMINDER_TZ
 
@@ -99,7 +122,12 @@ async def choose_reminder_tz(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await query.answer()
     tz = query.data.split(":", 1)[1]
     user_id = query.from_user.id
-    reminder_data = context.user_data.pop("new_reminder", {})
+    reminder_data = context.user_data.pop("new_reminder", None)
+    if reminder_data is None:
+        await query.edit_message_text(
+            "Сессия настройки устарела. Открой /settings и начни заново."
+        )
+        return ConversationHandler.END
 
     morning_time = _parse_time(reminder_data.get("morning"))
     evening_time = _parse_time(reminder_data.get("evening"))
@@ -112,7 +140,9 @@ async def choose_reminder_tz(update: Update, context: ContextTypes.DEFAULT_TYPE)
             evening_time=evening_time,
             timezone=tz,
             active=True,
+            commit=False,
         )
+        await session.commit()
 
     morning_str = morning_time.strftime("%H:%M") if morning_time else "не задано"
     evening_str = evening_time.strftime("%H:%M") if evening_time else "не задано"
@@ -149,7 +179,11 @@ def _parse_time(text) -> time | None:
 
 async def cancel_settings(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     context.user_data.pop("new_reminder", None)
-    await update.message.reply_text("Настройка отменена.")
+    if update.callback_query:
+        await update.callback_query.answer()
+        await update.callback_query.edit_message_text("Настройка отменена.")
+    else:
+        await update.message.reply_text("Настройка отменена.")
     return ConversationHandler.END
 
 
@@ -171,7 +205,10 @@ def get_settings_handler() -> ConversationHandler:
                 CallbackQueryHandler(choose_reminder_tz, pattern="^tz:"),
             ],
         },
-        fallbacks=[CommandHandler("cancel", cancel_settings)],
+        fallbacks=[
+            CommandHandler("cancel", cancel_settings),
+            CallbackQueryHandler(cancel_settings, pattern="^cancel:settings$"),
+        ],
         per_message=False,
     )
 
@@ -180,5 +217,6 @@ def get_settings_handlers() -> list:
     return [
         CommandHandler("settings", cmd_settings),
         MessageHandler(filters.Regex("^⚙️ Настройки$"), cmd_settings),
+        CallbackQueryHandler(btn_settings_profile, pattern="^settings:profile$"),
         get_settings_handler(),
     ]

@@ -2,7 +2,7 @@ from datetime import datetime, date, time
 from typing import Optional
 from sqlalchemy import (
     BigInteger, Boolean, Column, Date, DateTime, Float,
-    ForeignKey, Integer, String, Text, Time, func,
+    ForeignKey, Index, Integer, String, Text, Time, UniqueConstraint, func,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, relationship
@@ -31,6 +31,9 @@ class User(Base):
 
 class UserProfileVersion(Base):
     __tablename__ = "user_profile_versions"
+    __table_args__ = (
+        Index("ix_user_profile_versions_user_created", "user_id", "created_at"),
+    )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(BigInteger, ForeignKey("users.user_id"), nullable=False)
@@ -49,6 +52,9 @@ class UserProfileVersion(Base):
 
 class SkinAnalysisHistory(Base):
     __tablename__ = "skin_analysis_history"
+    __table_args__ = (
+        Index("ix_skin_analysis_history_user_created", "user_id", "created_at"),
+    )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(BigInteger, ForeignKey("users.user_id"), nullable=False)
@@ -65,6 +71,9 @@ class SkinAnalysisHistory(Base):
 
 class Routine(Base):
     __tablename__ = "routines"
+    __table_args__ = (
+        Index("ix_routines_user_created", "user_id", "created_at"),
+    )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(BigInteger, ForeignKey("users.user_id"), nullable=False)
@@ -78,6 +87,10 @@ class Routine(Base):
 
 class Tracking(Base):
     __tablename__ = "tracking"
+    __table_args__ = (
+        UniqueConstraint("user_id", "date", name="uq_tracking_user_date"),
+        Index("ix_tracking_user_date", "user_id", "date"),
+    )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(BigInteger, ForeignKey("users.user_id"), nullable=False)
@@ -93,6 +106,9 @@ class Tracking(Base):
 
 class UserProduct(Base):
     __tablename__ = "user_products"
+    __table_args__ = (
+        Index("ix_user_products_user_status", "user_id", "status"),
+    )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(BigInteger, ForeignKey("users.user_id"), nullable=False)
@@ -108,6 +124,9 @@ class UserProduct(Base):
 
 class Reminder(Base):
     __tablename__ = "reminders"
+    __table_args__ = (
+        Index("ix_reminders_active", "active"),
+    )
 
     user_id = Column(BigInteger, ForeignKey("users.user_id"), primary_key=True)
     morning_time = Column(Time)
@@ -120,6 +139,9 @@ class Reminder(Base):
 
 class SkinDiary(Base):
     __tablename__ = "skin_diary"
+    __table_args__ = (
+        Index("ix_skin_diary_user_created", "user_id", "created_at"),
+    )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(BigInteger, ForeignKey("users.user_id"), nullable=False)
@@ -133,6 +155,11 @@ class SkinDiary(Base):
 
 class ProductCatalog(Base):
     __tablename__ = "products_catalog"
+    __table_args__ = (
+        Index("ix_products_catalog_name", "name"),
+        Index("ix_products_catalog_category", "category"),
+        Index("ix_products_catalog_verified", "verified"),
+    )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String(500), nullable=False)
@@ -154,6 +181,9 @@ class ProductCatalog(Base):
 
 class ProductParseQueue(Base):
     __tablename__ = "product_parse_queue"
+    __table_args__ = (
+        Index("ix_product_parse_queue_status", "status"),
+    )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     url = Column(Text, nullable=False)
@@ -181,6 +211,10 @@ class IngredientsLibrary(Base):
 
 class ProductScan(Base):
     __tablename__ = "product_scans"
+    __table_args__ = (
+        Index("ix_product_scans_user_created", "user_id", "created_at"),
+        Index("ix_product_scans_product_id", "product_id"),
+    )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(BigInteger, ForeignKey("users.user_id"), nullable=False)
@@ -222,6 +256,15 @@ class BloggerTip(Base):
 class RoutineProduct(Base):
     """Привязка продукта к конкретному шагу рутины пользователя."""
     __tablename__ = "routine_products"
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id",
+            "period",
+            "step_index",
+            name="uq_routine_products_user_period_step",
+        ),
+        Index("ix_routine_products_user", "user_id"),
+    )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(BigInteger, ForeignKey("users.user_id"), nullable=False)
@@ -233,6 +276,10 @@ class RoutineProduct(Base):
 
 class Achievement(Base):
     __tablename__ = "achievements"
+    __table_args__ = (
+        UniqueConstraint("user_id", "code", name="uq_achievements_user_code"),
+        Index("ix_achievements_user", "user_id"),
+    )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(BigInteger, ForeignKey("users.user_id"), nullable=False)

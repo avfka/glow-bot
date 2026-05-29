@@ -1,5 +1,4 @@
 """Product search — AI-подбор продуктов по категории и профилю."""
-import json
 import logging
 
 from telegram import Update
@@ -13,12 +12,13 @@ from telegram.ext import (
 )
 
 from database import async_session_factory
-from database.queries import add_user_product, get_latest_profile, get_latest_routine, create_routine
-from services import get_analyzer
+from database.repositories.profiles import get_latest_profile
+from services.products import add_product_and_refresh_routine
+from services.product_recommendations import get_product_recommendations
 from utils.keyboards import (
     CATEGORY_LABELS,
-    main_menu_keyboard,
     product_category_keyboard,
+    product_search_empty_keyboard,
     search_results_keyboard,
     product_recommendation_keyboard,
 )
@@ -27,14 +27,6 @@ logger = logging.getLogger(__name__)
 
 WAIT_CATEGORY, WAIT_PICK = range(2)
 
-SKIN_TYPE_RU = {
-    "oily": "жирная", "dry": "сухая",
-    "combination": "комбинированная", "sensitive": "чувствительная",
-}
-BUDGET_RU = {"low": "до 500 ₽", "medium": "500–2000 ₽", "high": "от 2000 ₽"}
-GOAL_RU = {"hydration": "увлажнение", "tone": "выравнивание тона", "anti-age": "антивозрастной"}
-
-
 async def cmd_product_search(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     user_id = update.effective_user.id
     async with async_session_factory() as session:
@@ -42,7 +34,9 @@ async def cmd_product_search(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     if not profile:
         await update.message.reply_text(
-            "🔍 Сначала нужно создать профиль кожи.\n\nПройди анализ → /start"
+            "🔍 Сначала нужно создать профиль кожи.\n\n"
+            "После анализа я смогу подобрать продукты под твой тип кожи и цель ухода.",
+            reply_markup=product_search_empty_keyboard(),
         )
         return ConversationHandler.END
 
@@ -81,13 +75,16 @@ async def btn_select_category(update: Update, context: ContextTypes.DEFAULT_TYPE
         profile = await get_latest_profile(session, user_id)
 
     try:
-        analyzer = get_analyzer()
-        recommendations = await _get_recommendations(analyzer, profile, category)
+        recommendations = await get_product_recommendations(
+            profile,
+            category_label=cat_label,
+        )
         context.user_data["recommendations"] = recommendations
 
         if not recommendations:
             await query.edit_message_text(
                 "😔 Не удалось подобрать продукты. Попробуй другую категорию.",
+                parse_mode="Markdown",
                 reply_markup=product_category_keyboard(),
             )
             return WAIT_CATEGORY
@@ -112,11 +109,15 @@ async def btn_select_category(update: Update, context: ContextTypes.DEFAULT_TYPE
 async def btn_pick_recommendation(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
     await query.answer()
-    idx = int(query.data.split(":")[1])
+    idx = _parse_callback_index(query.data)
+    if idx is None:
+        await query.answer("Кнопка устарела", show_alert=True)
+        return WAIT_PICK
+
     recommendations = context.user_data.get("recommendations", [])
 
     if idx >= len(recommendations):
-        await query.answer("Продукт не найден", show_alert=True)
+        await query.answer("Подборка устарела. Запусти поиск заново.", show_alert=True)
         return WAIT_PICK
 
     rec = recommendations[idx]
@@ -148,65 +149,30 @@ async def btn_pick_recommendation(update: Update, context: ContextTypes.DEFAULT_
 async def btn_add_to_routine(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
     await query.answer()
-    idx = int(query.data.split(":")[1])
+    idx = _parse_callback_index(query.data)
+    if idx is None:
+        await query.answer("Кнопка устарела", show_alert=True)
+        return WAIT_PICK
+
     user_id = query.from_user.id
     recommendations = context.user_data.get("recommendations", [])
     category = context.user_data.get("search_category", "other")
 
     if idx >= len(recommendations):
-        await query.answer("Продукт не найден", show_alert=True)
+        await query.answer("Подборка устарела. Запусти поиск заново.", show_alert=True)
         return WAIT_PICK
 
     rec = recommendations[idx]
     full_name = f"{rec.get('brand', '')} {rec.get('name', '')}".strip()
     time_of_use = rec.get("time_of_use", "both")
 
-    async with async_session_factory() as session:
-        await add_user_product(
-            session=session,
-            user_id=user_id,
-            product_name=full_name,
-            product_type=category,
-            time_of_use=time_of_use,
-        )
-
-        # Regenerate routine with new product
-        from database.queries import get_active_products
-        products = await get_active_products(session, user_id)
-        profile = await get_latest_profile(session, user_id)
-
-    if profile:
-        try:
-            analyzer = get_analyzer()
-            products_for_ai = [
-                {"product_name": p.product_name, "product_type": p.product_type, "time_of_use": p.time_of_use}
-                for p in products
-            ]
-            routine_result = await analyzer.generate_routine(
-                profile={
-                    "skin_type": profile.skin_type,
-                    "skin_problems": profile.skin_problems or [],
-                    "allergies": profile.allergies,
-                    "budget": profile.budget,
-                    "goal": profile.goal,
-                    "age": profile.age,
-                },
-                user_products=products_for_ai,
-            )
-            async with async_session_factory() as session:
-                await create_routine(
-                    session=session,
-                    user_id=user_id,
-                    morning_steps=routine_result.morning_routine,
-                    evening_steps=routine_result.evening_routine,
-                    reason_for_change=f"Добавлен продукт: {full_name}",
-                )
-            routine_text = "\n🔄 Рутина обновлена!"
-        except Exception as e:
-            logger.error(f"Routine update error: {e}")
-            routine_text = ""
-    else:
-        routine_text = ""
+    result = await add_product_and_refresh_routine(
+        user_id=user_id,
+        product_name=full_name,
+        product_type=category,
+        time_of_use=time_of_use,
+    )
+    routine_text = "\n🔄 Рутина обновлена!" if result.routine_updated else ""
 
     await query.edit_message_text(
         f"✅ *{full_name}* добавлен в твои продукты!{routine_text}\n\n"
@@ -215,49 +181,6 @@ async def btn_add_to_routine(update: Update, context: ContextTypes.DEFAULT_TYPE)
         reply_markup=product_category_keyboard(),
     )
     return WAIT_CATEGORY
-
-
-async def _get_recommendations(analyzer, profile, category: str) -> list[dict]:
-    """Ask AI for product recommendations."""
-    skin_type = SKIN_TYPE_RU.get(profile.skin_type or "combination", profile.skin_type)
-    problems = ", ".join(profile.skin_problems or []) or "нет"
-    budget = BUDGET_RU.get(profile.budget or "medium", profile.budget)
-    goal = GOAL_RU.get(profile.goal or "hydration", profile.goal)
-    allergies = profile.allergies or "нет"
-    cat_label = CATEGORY_LABELS.get(category, category)
-
-    prompt = (
-        f"Порекомендуй 4 реальных продукта категории «{cat_label}» для:\n"
-        f"Тип кожи: {skin_type}\n"
-        f"Проблемы: {problems}\n"
-        f"Цель: {goal}\n"
-        f"Бюджет: {budget}\n"
-        f"Аллергии: {allergies}\n\n"
-        "Только реальные бренды, доступные в России (La Roche-Posay, The Ordinary, Виши, "
-        "Bioderma, Garnier, CeraVe, Eucerin, Clinique и т.д.).\n\n"
-        "Ответь JSON:\n"
-        '{"recommendations": ['
-        '{"name": "...", "brand": "...", "why": "почему подходит 1-2 предложения", '
-        '"key_ingredients": ["ингредиент1", "ингредиент2"], '
-        '"price_range": "от XXX ₽", "time_of_use": "morning|evening|both"}'
-        "]}"
-    )
-
-    # Use OpenAI directly via analyzer
-    from config import settings
-    from openai import AsyncOpenAI
-    client = AsyncOpenAI(api_key=settings.openai_api_key)
-    response = await client.chat.completions.create(
-        model=settings.openai_model,
-        messages=[
-            {"role": "system", "content": "Ты — косметолог. Рекомендуй реальные продукты. Отвечай только JSON."},
-            {"role": "user", "content": prompt},
-        ],
-        response_format={"type": "json_object"},
-        max_tokens=1000,
-    )
-    data = json.loads(response.choices[0].message.content)
-    return data.get("recommendations", [])
 
 
 def _format_recommendations_list(recs: list, cat_label: str) -> str:
@@ -273,10 +196,21 @@ def _format_recommendations_list(recs: list, cat_label: str) -> str:
     return "\n".join(lines)
 
 
+def _parse_callback_index(data: str) -> int | None:
+    try:
+        return int(data.split(":", 1)[1])
+    except (IndexError, ValueError):
+        return None
+
+
 async def cancel_search(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     context.user_data.pop("recommendations", None)
     context.user_data.pop("search_category", None)
-    await update.message.reply_text("Поиск отменён.")
+    if update.callback_query:
+        await update.callback_query.answer()
+        await update.callback_query.edit_message_text("Поиск отменён.")
+    else:
+        await update.message.reply_text("Поиск отменён.")
     return ConversationHandler.END
 
 
@@ -297,6 +231,9 @@ def get_product_search_handler() -> ConversationHandler:
                 CallbackQueryHandler(btn_back_to_categories, pattern="^search:back$"),
             ],
         },
-        fallbacks=[CommandHandler("cancel", cancel_search)],
+        fallbacks=[
+            CommandHandler("cancel", cancel_search),
+            CallbackQueryHandler(cancel_search, pattern="^cancel:search$"),
+        ],
         per_message=False,
     )

@@ -5,15 +5,15 @@ from telegram import Update
 from telegram.ext import CallbackQueryHandler, CommandHandler, ContextTypes, MessageHandler, filters
 
 from database import async_session_factory
-from database.queries import (
+from database.repositories.gamification import (
     ACHIEVEMENT_META,
     LEAGUE_CONFIG,
-    get_current_streak,
     get_leaderboard,
     get_user_achievements,
     next_league,
     streak_to_league,
 )
+from database.repositories.tracking import get_current_streak
 from utils.keyboards import achievements_keyboard, leaderboard_keyboard
 
 logger = logging.getLogger(__name__)

@@ -11,7 +11,7 @@ from telegram.ext import (
 )
 
 from database import async_session_factory
-from database.queries import get_streak_leaderboard
+from database.repositories.tracking import get_streak_leaderboard
 from utils.keyboards import friends_keyboard
 
 logger = logging.getLogger(__name__)

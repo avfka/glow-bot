@@ -50,13 +50,22 @@ DATABASE_URL=postgresql+asyncpg://user:password@localhost:5432/glowbot
 WEBHOOK_URL=  # пустое = polling режим
 ```
 
-### 3. Создать базу данных
+`postgresql://...` и `postgres://...` тоже поддерживаются — приложение нормализует URL к asyncpg-драйверу.
+
+### 3. Создать базу данных и применить миграции
 
 ```bash
 createdb glowbot
+alembic upgrade head
 ```
 
-База создаётся автоматически при первом запуске (через `create_all`).
+Схема базы управляется через Alembic-миграции.
+
+Если база уже была создана старой версией бота через `create_all`, сначала проверь схему и пометь текущую ревизию:
+
+```bash
+alembic stamp head
+```
 
 ### 4. Запустить
 
@@ -95,7 +104,7 @@ PORT=8000
 railway up
 ```
 
-Railway автоматически запустит `python bot.py` из Dockerfile.
+Railway автоматически выполнит `alembic upgrade head && python bot.py` из Dockerfile.
 
 ## Архитектура
 

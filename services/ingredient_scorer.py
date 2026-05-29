@@ -5,7 +5,7 @@ from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.models import IngredientsLibrary
-from database.queries import get_ingredients_bulk
+from database.repositories.products import get_ingredients_bulk
 
 
 @dataclass

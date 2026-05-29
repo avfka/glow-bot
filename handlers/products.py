@@ -12,17 +12,13 @@ from telegram.ext import (
 )
 
 from database import async_session_factory
-from database.queries import (
-    add_user_product,
+from database.repositories.products import (
     get_active_products,
-    get_latest_profile,
-    get_latest_routine,
     remove_user_product,
-    create_routine,
 )
-from services import get_analyzer
+from services.products import add_product_and_refresh_routine
 from utils.keyboards import (
-    main_menu_keyboard,
+    cancel_flow_keyboard,
     product_time_keyboard,
     product_type_keyboard,
     products_list_keyboard,
@@ -80,6 +76,7 @@ async def add_product_start(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     await query.edit_message_text(
         "➕ *Добавить продукт*\n\nНапиши название продукта:",
         parse_mode="Markdown",
+        reply_markup=cancel_flow_keyboard("cancel:products"),
     )
     return WAIT_PRODUCT_NAME
 
@@ -103,7 +100,14 @@ async def choose_product_type(update: Update, context: ContextTypes.DEFAULT_TYPE
     query = update.callback_query
     await query.answer()
     ptype = query.data.split(":")[1]
-    context.user_data["new_product"]["type"] = ptype
+    product_data = context.user_data.get("new_product")
+    if not product_data:
+        await query.edit_message_text(
+            "Сессия добавления продукта устарела. Открой /products и начни заново."
+        )
+        return ConversationHandler.END
+
+    product_data["type"] = ptype
 
     await query.edit_message_text(
         "⏰ Когда используешь этот продукт?",
@@ -117,53 +121,19 @@ async def choose_product_time(update: Update, context: ContextTypes.DEFAULT_TYPE
     await query.answer()
     ptime = query.data.split(":")[1]
     user_id = query.from_user.id
-    prod = context.user_data.pop("new_product", {})
-
-    async with async_session_factory() as session:
-        await add_user_product(
-            session=session,
-            user_id=user_id,
-            product_name=prod["name"],
-            product_type=prod["type"],
-            time_of_use=ptime,
+    prod = context.user_data.pop("new_product", None)
+    if not prod or not prod.get("name") or not prod.get("type"):
+        await query.edit_message_text(
+            "Сессия добавления продукта устарела. Открой /products и начни заново."
         )
+        return ConversationHandler.END
 
-        # Regenerate routine with updated products
-        products = await get_active_products(session, user_id)
-        profile = await get_latest_profile(session, user_id)
-
-    if profile:
-        try:
-            analyzer = get_analyzer()
-            products_for_ai = [
-                {"product_name": p.product_name, "product_type": p.product_type, "time_of_use": p.time_of_use}
-                for p in products
-            ]
-            routine_result = await analyzer.generate_routine(
-                profile={
-                    "skin_type": profile.skin_type,
-                    "skin_problems": profile.skin_problems or [],
-                    "allergies": profile.allergies,
-                    "budget": profile.budget,
-                    "goal": profile.goal,
-                    "age": profile.age,
-                },
-                user_products=products_for_ai,
-            )
-            async with async_session_factory() as session:
-                await create_routine(
-                    session=session,
-                    user_id=user_id,
-                    morning_steps=routine_result.morning_routine,
-                    evening_steps=routine_result.evening_routine,
-                    reason_for_change=f"Добавлен продукт: {prod['name']}",
-                )
-            routine_updated = True
-        except Exception as e:
-            logger.error(f"Routine update error: {e}", exc_info=True)
-            routine_updated = False
-    else:
-        routine_updated = False
+    result = await add_product_and_refresh_routine(
+        user_id=user_id,
+        product_name=prod["name"],
+        product_type=prod["type"],
+        time_of_use=ptime,
+    )
 
     type_label = PRODUCT_TYPE_LABELS.get(prod["type"], prod["type"])
     time_label = TIME_LABELS.get(ptime, ptime)
@@ -174,7 +144,7 @@ async def choose_product_time(update: Update, context: ContextTypes.DEFAULT_TYPE
         f"Тип: {type_label}\n"
         f"Применение: {time_label}\n"
     )
-    if routine_updated:
+    if result.routine_updated:
         text += "\n🔄 Рутина обновлена с учётом нового продукта!"
 
     await query.edit_message_text(text, parse_mode="Markdown")
@@ -188,7 +158,11 @@ async def remove_product(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     user_id = query.from_user.id
 
     async with async_session_factory() as session:
-        removed = await remove_user_product(session, product_id, user_id)
+        removed = await remove_user_product(
+            session, product_id, user_id, commit=False
+        )
+        if removed:
+            await session.commit()
         if not removed:
             await query.answer("Продукт не найден.", show_alert=True)
             return
@@ -200,7 +174,11 @@ async def remove_product(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 async def cancel_add(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     context.user_data.pop("new_product", None)
-    await update.message.reply_text("Добавление продукта отменено.")
+    if update.callback_query:
+        await update.callback_query.answer()
+        await update.callback_query.edit_message_text("Добавление продукта отменено.")
+    else:
+        await update.message.reply_text("Добавление продукта отменено.")
     return ConversationHandler.END
 
 
@@ -220,7 +198,10 @@ def get_products_handler() -> ConversationHandler:
                 CallbackQueryHandler(choose_product_time, pattern="^ptime:"),
             ],
         },
-        fallbacks=[CommandHandler("cancel", cancel_add)],
+        fallbacks=[
+            CommandHandler("cancel", cancel_add),
+            CallbackQueryHandler(cancel_add, pattern="^cancel:products$"),
+        ],
         per_message=False,
     )
 

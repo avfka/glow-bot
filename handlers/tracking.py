@@ -1,6 +1,5 @@
 """Tracking handler: mark routines done, show streak."""
 import logging
-from datetime import date, timedelta
 
 from telegram import Update
 from telegram.ext import (
@@ -12,7 +11,9 @@ from telegram.ext import (
 )
 
 from database import async_session_factory
-from database.queries import get_current_streak, get_today_tracking, upsert_tracking
+from database.repositories.gamification import ACHIEVEMENT_META
+from database.repositories.tracking import get_current_streak, get_today_tracking
+from services.tracking import save_tracking_status
 from utils.keyboards import tracking_keyboard
 
 logger = logging.getLogger(__name__)
@@ -27,7 +28,8 @@ async def cmd_track(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     evening_done = tracking.evening_done if tracking else False
 
     await update.message.reply_text(
-        "✅ *Отметь выполнение рутины на сегодня:*",
+        "✅ *Отметь выполнение рутины на сегодня:*\n\n"
+        "Выбери утро и/или вечер, затем нажми *Сохранить отметку*.",
         parse_mode="Markdown",
         reply_markup=tracking_keyboard(morning_done, evening_done),
     )
@@ -83,33 +85,11 @@ async def _save_tracking(query, context: ContextTypes.DEFAULT_TYPE) -> None:
     evening_done = pending["evening_done"]
 
     async with async_session_factory() as session:
-        yesterday = date.today() - timedelta(days=1)
-        from database.queries import get_tracking_by_date
-        yesterday_tracking = await get_tracking_by_date(session, user_id, yesterday)
-        yesterday_streak = yesterday_tracking.streak_days if yesterday_tracking else 0
-        yesterday_complete = (
-            yesterday_tracking
-            and yesterday_tracking.morning_done
-            and yesterday_tracking.evening_done
-        ) if yesterday_tracking else False
-
-        today_tracking = await get_today_tracking(session, user_id)
-        already_had_streak = today_tracking.streak_days if today_tracking else 0
-
-        if morning_done and evening_done:
-            if already_had_streak > 0:
-                streak = already_had_streak
-            else:
-                streak = (yesterday_streak + 1) if yesterday_complete else 1
-        else:
-            streak = yesterday_streak if yesterday_complete else 0
-
-        await upsert_tracking(
-            session=session,
+        result = await save_tracking_status(
+            session,
             user_id=user_id,
             morning_done=morning_done,
             evening_done=evening_done,
-            streak_days=streak,
         )
 
     done_parts = []
@@ -125,14 +105,20 @@ async def _save_tracking(query, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     streak_text = ""
     if morning_done and evening_done:
-        streak_text = f"\n\n🔥 *Стрик: {streak} {'день' if streak == 1 else 'дней'}!*"
-        if streak >= 7:
+        streak_text = f"\n\n🔥 *Стрик: {result.streak} {'день' if result.streak == 1 else 'дней'}!*"
+        if result.streak >= 7:
             streak_text += "\n🏆 Целая неделя — ты молодец!"
-        elif streak >= 3:
+        elif result.streak >= 3:
             streak_text += "\n✨ Отличная серия!"
 
+    ach_text = ""
+    for code in result.new_achievements:
+        meta = ACHIEVEMENT_META.get(code)
+        if meta:
+            ach_text += f"\n🎉 Новое достижение: *{meta[0]} {meta[1]}*"
+
     await query.edit_message_text(
-        f"💾 Сохранено!\n\n{done_text}{streak_text}",
+        f"💾 Сохранено!\n\n{done_text}{streak_text}{ach_text}",
         parse_mode="Markdown",
     )
 
@@ -154,33 +140,16 @@ async def quick_track(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         elif period == "evening":
             evening_done = True
 
-        yesterday = date.today() - timedelta(days=1)
-        from database.queries import get_tracking_by_date
-        yesterday_tracking = await get_tracking_by_date(session, user_id, yesterday)
-        yesterday_streak = yesterday_tracking.streak_days if yesterday_tracking else 0
-        yesterday_complete = (
-            yesterday_tracking
-            and yesterday_tracking.morning_done
-            and yesterday_tracking.evening_done
-        ) if yesterday_tracking else False
-
-        current_streak = tracking.streak_days if tracking else 0
-        if morning_done and evening_done and current_streak == 0:
-            streak = (yesterday_streak + 1) if yesterday_complete else 1
-        else:
-            streak = current_streak
-
-        await upsert_tracking(
-            session=session,
+        result = await save_tracking_status(
+            session,
             user_id=user_id,
             morning_done=morning_done,
             evening_done=evening_done,
-            streak_days=streak,
         )
 
     label = "утренняя" if period == "morning" else "вечерняя"
     await query.edit_message_text(
-        f"✅ {label.capitalize()} рутина отмечена!\n🔥 Стрик: {streak} дн."
+        f"✅ {label.capitalize()} рутина отмечена!\n🔥 Стрик: {result.streak} дн."
     )
 
 

@@ -1,18 +1,15 @@
 """APScheduler-based: напоминания + плановое обновление рутины."""
 import logging
-from datetime import datetime, date, timedelta
+from datetime import date, datetime
 
 import pytz
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from telegram import Bot
 
 from database import async_session_factory
-from database.queries import (
-    get_all_active_reminders,
-    get_today_tracking,
-    get_latest_routine,
-    grant_achievement,
-)
+from database.repositories.reminders import get_all_active_reminders
+from database.repositories.routines import get_latest_routine
+from database.repositories.tracking import get_today_tracking
 from utils.keyboards import reminder_done_keyboard
 
 logger = logging.getLogger(__name__)
