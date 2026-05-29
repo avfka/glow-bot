@@ -40,6 +40,14 @@ class StaleCallbackGuardTest(unittest.TestCase):
         self.assertTrue(_contains_user_data_pop_default_none(choose_tz, "new_reminder"))
         self.assertTrue(_contains_conversation_end(choose_tz))
 
+    def test_scanner_retry_callback_is_entry_point_after_completed_scan(self):
+        tree = ast.parse(Path("handlers/scanner.py").read_text(), filename="handlers/scanner.py")
+        get_handler = _find_function(tree, "get_scanner_handler")
+        entry_points = _keyword_value(get_handler, "entry_points")
+
+        self.assertIsNotNone(entry_points)
+        self.assertTrue(_contains_callback_pattern(entry_points, "^scanner:new$"))
+
 
 def _find_function(tree: ast.AST, name: str) -> ast.AsyncFunctionDef | ast.FunctionDef:
     for node in ast.walk(tree):
@@ -76,6 +84,40 @@ def _contains_user_data_pop_default_none(node: ast.AST, key: str) -> bool:
         if len(child.args) >= 2 and isinstance(child.args[1], ast.Constant) and child.args[1].value is None:
             return True
     return False
+
+
+def _keyword_value(node: ast.AST, name: str) -> ast.AST | None:
+    for child in ast.walk(node):
+        if not isinstance(child, ast.Call):
+            continue
+        if _call_name(child) != "ConversationHandler":
+            continue
+        for keyword in child.keywords:
+            if keyword.arg == name:
+                return keyword.value
+    return None
+
+
+def _contains_callback_pattern(node: ast.AST, pattern: str) -> bool:
+    return any(
+        isinstance(child, ast.Call)
+        and _call_name(child) == "CallbackQueryHandler"
+        and any(
+            keyword.arg == "pattern"
+            and isinstance(keyword.value, ast.Constant)
+            and keyword.value.value == pattern
+            for keyword in child.keywords
+        )
+        for child in ast.walk(node)
+    )
+
+
+def _call_name(node: ast.Call) -> str | None:
+    if isinstance(node.func, ast.Name):
+        return node.func.id
+    if isinstance(node.func, ast.Attribute):
+        return node.func.attr
+    return None
 
 
 def _contains_user_data_call(node: ast.AST, method: str, key: str) -> bool:

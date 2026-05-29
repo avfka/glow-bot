@@ -247,6 +247,7 @@ def get_scanner_handler() -> ConversationHandler:
         entry_points=[
             CommandHandler("scan", cmd_scan),
             MessageHandler(filters.Regex("^🔍 Сканер состава$"), cmd_scan),
+            CallbackQueryHandler(btn_scanner_new, pattern="^scanner:new$"),
         ],
         states={
             WAIT_SCAN_QUERY: [
