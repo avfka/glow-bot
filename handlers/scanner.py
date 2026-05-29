@@ -14,6 +14,7 @@ from telegram.ext import (
 )
 
 from services import get_analyzer
+from services.catalog_formatting import format_commerce_line
 from services.scanner import scan_catalog_product, scan_ocr_ingredients
 from utils.marketplaces import merge_marketplace_urls, marketplace_search_urls
 from utils.keyboards import scan_method_keyboard, scan_retry_keyboard, scanner_result_keyboard
@@ -72,6 +73,9 @@ async def receive_scan_query(update: Update, context: ContextTypes.DEFAULT_TYPE)
             warnings=scan_result.warnings,
             bad=scan_result.bad,
             ph=product.ph,
+            price=product.price,
+            rating=product.rating,
+            reviews_count=product.reviews_count,
         )
 
         await update.message.reply_text(
@@ -171,6 +175,9 @@ def _format_scan_result(
     bad: list,
     ph: Optional[float] = None,
     ph_comment: str = "",
+    price: Optional[int] = None,
+    rating: Optional[float] = None,
+    reviews_count: Optional[int] = None,
 ) -> str:
     lines = [
         f"*{product_name}*",
@@ -217,8 +224,14 @@ def _format_scan_result(
     elif ph_comment:
         lines.append(f"💡 {ph_comment}\n")
 
+    commerce = format_commerce_line(price=price, rating=rating, reviews_count=reviews_count)
+    if commerce:
+        lines.append(commerce)
+        lines.append("")
+
     lines.append(f"_{DISCLAIMER_SHORT}_")
     return "\n".join(lines)
+
 
 
 async def btn_scanner_new(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:

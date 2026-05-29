@@ -16,6 +16,18 @@ class ProductsRepositoryTest(unittest.TestCase):
         self.assertTrue(_calls_name(search_catalog, "or_"))
         self.assertTrue(_calls_attribute(search_catalog, "strip"))
 
+    def test_catalog_upsert_supports_commerce_fields(self):
+        tree = ast.parse(
+            Path("database/repositories/products.py").read_text(),
+            filename="database/repositories/products.py",
+        )
+        upsert = _find_function(tree, "upsert_catalog_product")
+
+        self.assertTrue(_assigns_attribute(upsert, "price"))
+        self.assertTrue(_assigns_attribute(upsert, "rating"))
+        self.assertTrue(_assigns_attribute(upsert, "reviews_count"))
+        self.assertTrue(_assigns_attribute(upsert, "review_summary"))
+
 
 def _find_function(tree: ast.AST, name: str) -> ast.AsyncFunctionDef | ast.FunctionDef:
     for node in ast.walk(tree):
@@ -48,6 +60,17 @@ def _calls_attribute(node: ast.AST, name: str) -> bool:
         isinstance(child, ast.Call)
         and isinstance(child.func, ast.Attribute)
         and child.func.attr == name
+        for child in ast.walk(node)
+    )
+
+
+def _assigns_attribute(node: ast.AST, attr_name: str) -> bool:
+    return any(
+        isinstance(child, ast.Assign)
+        and any(
+            isinstance(target, ast.Attribute) and target.attr == attr_name
+            for target in child.targets
+        )
         for child in ast.walk(node)
     )
 

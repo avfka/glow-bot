@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.models import (
@@ -113,6 +113,67 @@ async def add_catalog_product(
         verified=verified,
     )
     session.add(product)
+    return await persist(session, product, commit)
+
+
+async def upsert_catalog_product(
+    session: AsyncSession,
+    *,
+    name: str,
+    brand: Optional[str] = None,
+    category: Optional[str] = None,
+    ingredients_raw: Optional[str] = None,
+    ingredients_parsed: Optional[list] = None,
+    source: str = "import",
+    verified: bool = False,
+    wb_url: Optional[str] = None,
+    za_url: Optional[str] = None,
+    price: Optional[int] = None,
+    rating: Optional[float] = None,
+    reviews_count: Optional[int] = None,
+    review_summary: Optional[str] = None,
+    commit: bool = True,
+) -> ProductCatalog:
+    name = name.strip()
+    brand = brand.strip() if brand else None
+    za_url = za_url.strip() if za_url else None
+    wb_url = wb_url.strip() if wb_url else None
+
+    product = None
+    if za_url:
+        result = await session.execute(
+            select(ProductCatalog).where(ProductCatalog.za_url == za_url)
+        )
+        product = result.scalar_one_or_none()
+
+    if product is None and brand:
+        result = await session.execute(
+            select(ProductCatalog).where(
+                and_(
+                    func.lower(ProductCatalog.name) == name.lower(),
+                    func.lower(ProductCatalog.brand) == brand.lower(),
+                )
+            )
+        )
+        product = result.scalar_one_or_none()
+
+    if product is None:
+        product = ProductCatalog(name=name)
+        session.add(product)
+
+    product.brand = brand or product.brand
+    product.category = category or product.category
+    product.ingredients_raw = ingredients_raw or product.ingredients_raw
+    product.ingredients_parsed = ingredients_parsed or product.ingredients_parsed
+    product.source = source or product.source
+    product.verified = verified
+    product.wb_url = wb_url or product.wb_url
+    product.za_url = za_url or product.za_url
+    product.price = price if price is not None else product.price
+    product.rating = rating if rating is not None else product.rating
+    product.reviews_count = reviews_count if reviews_count is not None else product.reviews_count
+    product.review_summary = review_summary or product.review_summary
+
     return await persist(session, product, commit)
 
 
