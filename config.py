@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     database_url: str
     webhook_url: str = ""
     port: int = 8000
+    super_admin_ids: str = ""
 
     # Which analyzer to use: "openai" | "ml_engine"
     skin_analyzer_backend: str = "openai"

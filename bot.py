@@ -5,6 +5,7 @@ from telegram import Update
 from telegram.ext import Application
 
 from config import settings
+from handlers.admin import get_admin_handlers
 from handlers.errors import handle_error
 from handlers.onboarding import get_onboarding_handler
 from handlers.routine import get_routine_handlers
@@ -76,6 +77,10 @@ def main() -> None:
 
     # Settings
     for h in get_settings_handlers():
+        app.add_handler(h)
+
+    # Super-admin commands
+    for h in get_admin_handlers():
         app.add_handler(h)
 
     app.add_error_handler(handle_error)
