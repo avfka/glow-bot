@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import and_, select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.models import (
@@ -64,8 +64,20 @@ async def remove_user_product(
 
 
 async def search_catalog(session: AsyncSession, query: str) -> list[ProductCatalog]:
+    query = query.strip()
+    if not query:
+        return []
+
+    pattern = f"%{query}%"
     result = await session.execute(
-        select(ProductCatalog).where(ProductCatalog.name.ilike(f"%{query}%")).limit(5)
+        select(ProductCatalog)
+        .where(
+            or_(
+                ProductCatalog.name.ilike(pattern),
+                ProductCatalog.brand.ilike(pattern),
+            )
+        )
+        .limit(5)
     )
     return result.scalars().all()
 
