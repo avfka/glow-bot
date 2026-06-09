@@ -89,7 +89,15 @@ export interface Database {
           created_at?: string;
           updated_at?: string;
         };
-        Relationships: [];
+        Relationships: [
+          {
+            foreignKeyName: 'clients_specialist_id_fkey';
+            columns: ['specialist_id'];
+            isOneToOne: false;
+            referencedRelation: 'specialists';
+            referencedColumns: ['id'];
+          },
+        ];
       };
       services: {
         Row: {
@@ -122,7 +130,15 @@ export interface Database {
           is_active?: boolean;
           created_at?: string;
         };
-        Relationships: [];
+        Relationships: [
+          {
+            foreignKeyName: 'services_specialist_id_fkey';
+            columns: ['specialist_id'];
+            isOneToOne: false;
+            referencedRelation: 'specialists';
+            referencedColumns: ['id'];
+          },
+        ];
       };
       appointments: {
         Row: {
@@ -170,7 +186,29 @@ export interface Database {
           created_at?: string;
           updated_at?: string;
         };
-        Relationships: [];
+        Relationships: [
+          {
+            foreignKeyName: 'appointments_specialist_id_fkey';
+            columns: ['specialist_id'];
+            isOneToOne: false;
+            referencedRelation: 'specialists';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'appointments_client_id_fkey';
+            columns: ['client_id'];
+            isOneToOne: false;
+            referencedRelation: 'clients';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'appointments_service_id_fkey';
+            columns: ['service_id'];
+            isOneToOne: false;
+            referencedRelation: 'services';
+            referencedColumns: ['id'];
+          },
+        ];
       };
       client_photos: {
         Row: {
@@ -203,7 +241,29 @@ export interface Database {
           taken_at?: string;
           created_at?: string;
         };
-        Relationships: [];
+        Relationships: [
+          {
+            foreignKeyName: 'client_photos_specialist_id_fkey';
+            columns: ['specialist_id'];
+            isOneToOne: false;
+            referencedRelation: 'specialists';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'client_photos_client_id_fkey';
+            columns: ['client_id'];
+            isOneToOne: false;
+            referencedRelation: 'clients';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'client_photos_appointment_id_fkey';
+            columns: ['appointment_id'];
+            isOneToOne: false;
+            referencedRelation: 'appointments';
+            referencedColumns: ['id'];
+          },
+        ];
       };
       ingredient_analyses: {
         Row: {
@@ -236,7 +296,22 @@ export interface Database {
           model?: string;
           created_at?: string;
         };
-        Relationships: [];
+        Relationships: [
+          {
+            foreignKeyName: 'ingredient_analyses_specialist_id_fkey';
+            columns: ['specialist_id'];
+            isOneToOne: false;
+            referencedRelation: 'specialists';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'ingredient_analyses_client_id_fkey';
+            columns: ['client_id'];
+            isOneToOne: false;
+            referencedRelation: 'clients';
+            referencedColumns: ['id'];
+          },
+        ];
       };
     };
     Views: Record<string, never>;
