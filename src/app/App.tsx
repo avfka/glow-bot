@@ -3,6 +3,7 @@ import { HashRouter } from 'react-router-dom';
 
 import { useThemeSync } from '@/hooks/useThemeSync';
 
+import { AuthGate } from './AuthGate';
 import { NotInTelegram } from './NotInTelegram';
 import { AppRoutes } from './router';
 
@@ -31,7 +32,9 @@ export function App({ inTelegram }: AppProps) {
     <QueryClientProvider client={queryClient}>
       {/* HashRouter — чтобы приложение переживало перезагрузку на любом статическом хостинге */}
       <HashRouter>
-        <AppRoutes />
+        <AuthGate>
+          <AppRoutes />
+        </AuthGate>
       </HashRouter>
     </QueryClientProvider>
   );

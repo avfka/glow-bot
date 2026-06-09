@@ -1,0 +1,12 @@
+project_id = "glow-studio"
+
+# Авторизация происходит до получения сессии — функция публичная,
+# подлинность запроса гарантирует HMAC-подпись Telegram initData.
+[functions.telegram-auth]
+verify_jwt = false
+
+[functions.analyze-ingredients]
+verify_jwt = true
+
+[functions.send-reminders]
+verify_jwt = false
