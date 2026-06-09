@@ -1,0 +1,109 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 36 33% 95%;
+    --foreground: 25 6% 16%;
+
+    --card: 40 50% 99%;
+    --card-foreground: 25 6% 16%;
+
+    --primary: 16 31% 63%;
+    --primary-foreground: 20 60% 98%;
+
+    --secondary: 33 28% 91%;
+    --secondary-foreground: 25 6% 24%;
+
+    --muted: 35 25% 89%;
+    --muted-foreground: 27 7% 48%;
+
+    --accent: 16 42% 92%;
+    --accent-foreground: 16 28% 34%;
+
+    --destructive: 5 52% 53%;
+    --destructive-foreground: 20 60% 98%;
+
+    --border: 35 22% 86%;
+    --input: 35 22% 84%;
+    --ring: 16 31% 63%;
+
+    --pastel-lavender: 262 32% 91%;
+    --pastel-peach: 24 58% 90%;
+    --pastel-nude: 20 35% 89%;
+    --pastel-sage: 100 18% 88%;
+
+    --hero-stroke: 18 26% 56%;
+    --hero-fill: 20 40% 93%;
+
+    --radius: 1.25rem;
+  }
+
+  .dark {
+    --background: 30 7% 8%;
+    --foreground: 35 14% 90%;
+
+    --card: 30 6% 12%;
+    --card-foreground: 35 14% 90%;
+
+    --primary: 16 34% 70%;
+    --primary-foreground: 20 15% 12%;
+
+    --secondary: 30 5% 16%;
+    --secondary-foreground: 35 12% 80%;
+
+    --muted: 30 5% 16%;
+    --muted-foreground: 32 7% 60%;
+
+    --accent: 16 16% 20%;
+    --accent-foreground: 16 30% 78%;
+
+    --destructive: 5 48% 58%;
+    --destructive-foreground: 20 15% 12%;
+
+    --border: 30 6% 18%;
+    --input: 30 6% 21%;
+    --ring: 16 34% 70%;
+
+    --pastel-lavender: 262 12% 20%;
+    --pastel-peach: 24 14% 19%;
+    --pastel-nude: 20 11% 19%;
+    --pastel-sage: 100 7% 18%;
+
+    --hero-stroke: 220 7% 60%;
+    --hero-fill: 220 6% 14%;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-background font-sans text-foreground antialiased;
+    overscroll-behavior-y: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  #root {
+    min-height: 100dvh;
+  }
+}
+
+@layer utilities {
+  .pb-safe-tabbar {
+    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 6.5rem);
+  }
+
+  .scrollbar-none {
+    scrollbar-width: none;
+  }
+
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+}
